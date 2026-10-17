@@ -25,10 +25,12 @@ local floor = math.floor
 -- Small helpers
 -- ---------------------------------------------------------------------------
 
--- OGS rank number: 0 = 30 kyu ... 29 = 1 kyu, 30 = 1 dan ... 38 = 9 dan (UNVERIFIED scale)
+-- OGS rank number (a float such as 30.79): 0 = 30 kyu ... 29 = 1 kyu,
+-- 30 = 1 dan ... 38 = 9 dan; the fraction is dropped, as OGS shows it.
+-- Seen in a real session: 30.79 and 26.6 for players shown as 1d and 4k.
 function OGSGame.rank_text(n)
     if type(n) ~= "number" then return "" end
-    n = floor(n + 0.5)
+    n = floor(n)
     if n < 30 then return (30 - n) .. "k" end
     return (n - 29) .. "d"
 end
@@ -82,6 +84,7 @@ function OGSGame:load(data)
         black_rank = OGSGame.rank_text(pb.rank or pb.ranking),
         white_rank = OGSGame.rank_text(pw.rank or pw.ranking),
         name = data.game_name or data.name,
+        allow_suicide = data.allow_self_capture == true,
     }
     if not game then return nil, err end
 

@@ -165,7 +165,21 @@ function OGS:_emit(name, data)
     self.on_event(name, data)
 end
 
+-- Frames we never use; the server sends some of them large (active-bots is
+-- about 100 KB right after sign-in), so they are skipped before parsing.
+OGS.SKIP = { "active-bots", "game/%d+/latency", "score-estimator-enabled-state", "incident-report" }
+
+local function skippable(text)
+    local name = text:match('^%["([^"]+)"')
+    if not name then return false end
+    for _, pat in ipairs(OGS.SKIP) do
+        if name:match("^" .. pat) then return true end
+    end
+    return false
+end
+
 function OGS:receive(text)
+    if skippable(text) then return end
     local msg = json.decode(text)
     if type(msg) ~= "table" or msg[1] == nil then
         self.parse_errors = self.parse_errors + 1
@@ -175,6 +189,7 @@ function OGS:receive(text)
     end
     local first, data, extra = msg[1], msg[2], msg[3]
     if data == json.null then data = nil end
+    if extra == json.null then extra = nil end          -- replies are [id, data, null]
     if type(first) == "number" then
         local req = self.pending[first]
         if req then

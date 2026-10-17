@@ -31,6 +31,7 @@ end
        rules     "Chinese" (default) | "Japanese"
        date      string, default today
        name      game name (GN)
+       allow_suicide  true for New Zealand style self-capture (OGS allow_self_capture)
 --]]
 function Game.new(opts)
     opts = opts or {}
@@ -40,7 +41,8 @@ function Game.new(opts)
     if komi == nil then komi = (handicap >= 2) and 0.5 or 7.5 end
     local rules_name = opts.rules or "Chinese"
 
-    local rules = Rules.new(size, { komi = komi, scoring = scoring_for(rules_name) })
+    local rules = Rules.new(size, { komi = komi, scoring = scoring_for(rules_name),
+                                   allow_suicide = opts.allow_suicide })
     local setup = {}
     if handicap >= 2 then
         local ok, pts = rules:place_handicap(handicap)

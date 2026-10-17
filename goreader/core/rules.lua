@@ -58,6 +58,9 @@ end
        komi    number   default 7.5
        scoring "area" | "territory"   default "area"
        superko bool     default true (positional superko). false = simple ko only.
+       allow_suicide bool  default false. true (New Zealand rules, and OGS games
+                        with allow_self_capture): a move that leaves its own
+                        group without liberties is played and the group removed.
 --]]
 function Rules.new(size, opts)
     size = size or 19
@@ -72,6 +75,7 @@ function Rules.new(size, opts)
     self.komi    = opts.komi or 7.5
     self.scoring = opts.scoring or "area"
     self.superko = (opts.superko ~= false)
+    self.allow_suicide = opts.allow_suicide == true
     self.turn    = BLACK
     self.prisoners = { [BLACK] = 0, [WHITE] = 0 }   -- stones captured BY colour
     self.passes  = 0                                -- consecutive passes
@@ -84,7 +88,7 @@ end
 
 function Rules:clone()
     local c = Rules.new(self.size, { komi = self.komi, scoring = self.scoring,
-                                     superko = self.superko })
+                                     superko = self.superko, allow_suicide = self.allow_suicide })
     for i = 1, self.n do c.cells[i] = self.cells[i] end
     c.turn = self.turn
     c.prisoners = { [BLACK] = self.prisoners[BLACK], [WHITE] = self.prisoners[WHITE] }
@@ -273,14 +277,20 @@ function Rules:play(color, col, row)
         end
     end
 
+    local suicide                                   -- own stones removed by a self-capture
     local function rollback()
         for _, s in ipairs(captured) do cells[s] = opp end
+        if suicide then for _, st in ipairs(suicide) do cells[st] = c end end
         cells[idx] = EMPTY
     end
 
-    -- suicide
-    local _, libs = group(self, idx)
-    if libs == 0 then rollback(); return false, "suicide" end
+    -- suicide: refused, or (when allowed) the group is removed
+    local own_stones, libs = group(self, idx)
+    if libs == 0 then
+        if not self.allow_suicide then rollback(); return false, "suicide" end
+        suicide = own_stones
+        for _, st in ipairs(suicide) do cells[st] = EMPTY end
+    end
 
     -- ko: same position as before the opponent's last move; superko: any
     local key = table.concat(cells)
@@ -288,15 +298,17 @@ function Rules:play(color, col, row)
     if before and key == before and #captured > 0 then
         rollback(); return false, "ko"
     end
-    if self.superko and self.seen[key] then
+    -- a self-capture passes the turn; positions repeating through it are not a cycle
+    if self.superko and self.seen[key] and not suicide then
         rollback(); return false, "superko"
     end
 
     self.history[#self.history + 1] = {
-        color = c, idx = idx, captured = captured,
+        color = c, idx = idx, captured = captured, suicide = suicide,
         prev_turn = self.turn, prev_passes = self.passes,
     }
     self.prisoners[c] = self.prisoners[c] + #captured
+    if suicide then self.prisoners[opp] = self.prisoners[opp] + #suicide end
     self.turn = opp
     self.passes = 0
     self.keys[#self.keys + 1] = key
@@ -325,9 +337,13 @@ function Rules:undo()
     self.seen[key] = self.seen[key] - 1
     if self.seen[key] <= 0 then self.seen[key] = nil end
     if not r.pass then
-        self.cells[r.idx] = EMPTY
         local opp = 3 - r.color
         for _, s in ipairs(r.captured) do self.cells[s] = opp end
+        if r.suicide then
+            for _, s in ipairs(r.suicide) do self.cells[s] = r.color end
+            self.prisoners[opp] = self.prisoners[opp] - #r.suicide
+        end
+        self.cells[r.idx] = EMPTY
         self.prisoners[r.color] = self.prisoners[r.color] - #r.captured
     end
     self.turn = r.prev_turn
