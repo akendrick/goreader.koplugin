@@ -44,6 +44,8 @@ local function decode(m)
     return OGS.decode_move(m)
 end
 
+OGSGame.decode_move = decode
+
 local function fmt_time(sec)
     sec = math.max(0, floor(sec + 0.5))
     if sec >= 86400 then return floor(sec / 86400) .. "d " .. floor((sec % 86400) / 3600) .. "h" end
