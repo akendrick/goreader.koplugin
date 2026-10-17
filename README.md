@@ -12,12 +12,29 @@ goreader/
     sgf.lua        parse / write / tree; turn detection incl. handicap and PL
     rules.lua      legality, ko / superko, captures, undo, handicap, scoring
     game.lua       a game in progress: rules + SGF kept in step, save / load
+    session.lua    play-vs-computer controller (turns, pass, resign, undo, scoring)
+    problems.lua   Go problems from SGF; right/wrong, hint, solution
+    joseki.lua     joseki dictionary navigation in any corner, sandbox
+    analysis.lua   AI review data in the SGF (GA/GV), mistakes, suggestions
+    ogsgame.lua    an OGS game: gamedata/move/clock/phase -> Game, clocks, result
+    ogsplay.lua    play or watch one OGS game: stage/confirm moves, resync, chat
+    chat.lua       game chat store: cleaning, mute, rate limit
   engine/
     gtp.lua        GTP scripts, response parsing, one-shot process runner
     engines.lua    Pachi, GNU Go and generic adapters (same interface)
+    remote.lua     KataGo over https via server/katago_broker.py
   services/
     storage.lua    library outside the plugin folder, atomic writes, import
+    settings.lua   validated settings, separate token storage
+    library.lua    list / sort / filter / page saved games (9 per page)
+    json.lua       dependency-free JSON
+    dgs.lua        Dragon Go Server client (HTTP transport injected)
+    websocket.lua  RFC 6455 client in pure Lua (socket injected)
+    ogs.lua        OGS realtime protocol (frames, ids, ping, per-game events)
 ```
+
+Outside the plugin: `server/` (KataGo broker, Python), `tools/` (engine
+matches, annotate), `OGS_RESEARCH.md`, `GOREADER_PLAN.md`.
 
 Require as `require("goreader.core.game")` etc. Coordinates everywhere:
 `col 1..N` left to right, `row 1..N` top to bottom, colours `"B"` / `"W"`.
@@ -64,14 +81,20 @@ complete GTP script (`gtp.lua`), so there are no long-lived pipes to hang.
 
 ## Strength
 
-`Engines.PACHI_PLAYOUTS` (levels 1..10) are **uncalibrated placeholders**.
-They must be tuned by benchmarking on the Kobo and by playing games. GNU Go
-uses its own `--level 0..10`.
+Calibration (`tools/calibrate.sh`, results in `tools/out/summary.txt`), 9x9
+against GNU Go level 10: GNU Go 1/3/5/7 score 25/38/38/48 %. Pachi at its
+500-playout minimum already scores 92 %, and more playouts do not change that,
+so Pachi cannot be made weaker by playouts alone. For a 9 kyu the default
+opponent is GNU Go; Pachi is the strong option. Device speed (playouts per
+second on the Forma) is still unmeasured. `Engines.PACHI_PLAYOUTS` stays a
+placeholder until then.
 
 ## Tests
 
 ```
-lua tests/run.lua          # from the repository root; 106 tests
+lua tests/run.lua          # from the repository root; 397 tests
+python3 server/test_broker.py      # broker
+bash tools/selftest_annotate.sh    # broker + annotate tool end to end
 ```
 
 `tests/fake_engine.lua` is a tiny GTP engine used to test the process path
