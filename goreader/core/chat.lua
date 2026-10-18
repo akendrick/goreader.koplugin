@@ -118,6 +118,30 @@ function Chat:add_ogs(ev, my_id)
     }
 end
 
+--[[ A site-chat event "chat-message": { channel, id, username, ranking,
+     professional, system, message = { i = uuid, m = text, t = time } }.
+     System lines (joins, notices) are kept but flagged. ]]
+function Chat:add_room(ev, my_name)
+    if type(ev) ~= "table" or type(ev.message) ~= "table" then return nil end
+    local m = ev.message
+    local body = m.m
+    if type(body) ~= "string" then return nil end
+    local l = self:add{
+        id = m.i or ev.id, name = ev.username, body = body, time = m.t,
+        channel = ev.channel, rank = ev.ranking,
+        mine = my_name ~= nil and ev.username == my_name,
+    }
+    if l and ev.system then l.system = true end
+    return l
+end
+
+-- Lines of one room only (a Chat store can hold several channels)
+function Chat:room(channel)
+    local out = {}
+    for _, l in ipairs(self:visible()) do if l.channel == channel then out[#out + 1] = l end end
+    return out
+end
+
 -- Remove lines the server deleted (game/<id>/chat/remove { chat_ids })
 function Chat:remove_ids(ids)
     local gone = {}

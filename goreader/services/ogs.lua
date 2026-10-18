@@ -329,4 +329,31 @@ function OGS:chat(game_id, move_number, body, as_spectator)
         move_number = move_number or 0, body = body })
 end
 
+-- ---------------------------------------------------------------------------
+-- Chat rooms (site chat: global-english, global-help, group-<id>, ...)
+-- Message shapes UNVERIFIED; see OGS_RESEARCH.md section 7b.
+-- ---------------------------------------------------------------------------
+
+function OGS:join_room(channel)
+    if type(channel) ~= "string" or not channel:match("^[%w_%-]+$") then return nil, "bad_channel" end
+    return self:send("chat/join", { channel = channel })
+end
+
+function OGS:leave_room(channel)
+    if type(channel) ~= "string" then return nil, "bad_channel" end
+    return self:send("chat/part", { channel = channel })
+end
+
+--[[ Say something in a room. `uuid` identifies the message so the echo can be
+     matched to it. Returns the uuid, or nil + reason. ]]
+function OGS:say_room(channel, body)
+    if type(channel) ~= "string" or not channel:match("^[%w_%-]+$") then return nil, "bad_channel" end
+    if type(body) ~= "string" or body:match("^%s*$") then return nil, "empty" end
+    self.room_counter = (self.room_counter or 0) + 1
+    local uuid = string.format("goreader-%d-%d", self.now(), self.room_counter)
+    local ok, err = self:send("chat/send", { channel = channel, uuid = uuid, message = body })
+    if not ok then return nil, err end
+    return uuid
+end
+
 return OGS
