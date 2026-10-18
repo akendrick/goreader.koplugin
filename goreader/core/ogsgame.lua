@@ -235,6 +235,13 @@ function OGSGame:player_clock(color, now_ms)
             elapsed = elapsed - main                   -- spill into overtime
         end
         out.overtime = true
+        -- A player who is not on the move shows the time left in the period at
+        -- their last move (seen in a real byo-yomi game: period_time_left).
+        if not ticking and t.period_time_left then
+            out.periods, out.period_time = periods, t.period_time_left
+            out.text = periods .. "x " .. fmt_time(t.period_time_left)
+            return out
+        end
         if ptime <= 0 then out.lost = periods <= 0; out.text = "0:00"; return out end
         local used = floor(elapsed / ptime)
         out.periods = periods - used
