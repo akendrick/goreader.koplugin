@@ -102,6 +102,8 @@ end
 function Chat:add_ogs(ev, my_id)
     if type(ev) ~= "table" then return nil end
     local l = ev.line or ev
+    -- fields can be absent or JSON null (move_number was null in a real recording)
+    if type(l.move_number) ~= "number" then l = setmetatable({ move_number = 0 }, { __index = l }) end
     if type(l) ~= "table" then return nil end
     local body = l.body
     if type(body) == "table" then

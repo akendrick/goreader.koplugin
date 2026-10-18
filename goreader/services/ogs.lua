@@ -180,7 +180,7 @@ end
 
 function OGS:receive(text)
     if skippable(text) then return end
-    local msg = json.decode(text)
+    local msg = json.decode(text, { drop_null = true })     -- {"move_number": null} etc. become absent
     if type(msg) ~= "table" or msg[1] == nil then
         self.parse_errors = self.parse_errors + 1
         self.log("warn", "OGS: unparseable frame")

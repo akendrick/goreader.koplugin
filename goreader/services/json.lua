@@ -73,6 +73,8 @@ local function parse_string(s, i)
     end
 end
 
+local DROP_NULL = false
+
 function parse_value(s, i)
     i = skip(s, i)
     local c = s:sub(i, i)
@@ -87,7 +89,7 @@ function parse_value(s, i)
             i = skip(s, i)
             if s:sub(i, i) ~= ":" then fail(s, i, "expected ':'") end
             local val; val, i = parse_value(s, i + 1)
-            obj[key] = val
+            if val ~= json.null or not DROP_NULL then obj[key] = val end
             i = skip(s, i)
             local d = s:sub(i, i)
             if d == "}" then return obj, i + 1 end
@@ -121,9 +123,14 @@ function parse_value(s, i)
     end
 end
 
-function json.decode(s)
+--[[ opts.drop_null: leave out object members whose value is null, so code can
+     test `if x then` without meeting json.null (a table, hence truthy). Array
+     elements stay json.null so positions are kept. ]]
+function json.decode(s, opts)
     if type(s) ~= "string" then return nil, "not a string" end
+    DROP_NULL = opts and opts.drop_null or false
     local ok, v, i = pcall(parse_value, s, 1)
+    DROP_NULL = false
     if not ok then
         if type(v) == "table" and v.json_error then return nil, v.json_error end
         return nil, tostring(v)
