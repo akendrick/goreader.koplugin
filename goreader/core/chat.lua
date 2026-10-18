@@ -179,6 +179,12 @@ end
 
 function Chat:mark_read() self.unread = 0 end
 
+-- Forget the stored lines but keep mutes and the send limiter (the server is
+-- about to replay the history: game/<id>/reset-chats)
+function Chat:clear()
+    self.lines, self.ids, self.unread = {}, {}, 0
+end
+
 -- "ann (3k): hello" for the strip under the board
 function Chat.line_text(l, rank_text)
     local who = l.name ~= "" and l.name or "?"

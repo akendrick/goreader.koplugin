@@ -99,7 +99,9 @@ function Play:_resync(why)
 end
 
 function Play:_handle(event, data)
-    if event == "gamedata" then
+    -- "data" is the same game object, sent when the game changes state (it
+    -- carried the final result of a timed-out game in a real recording)
+    if event == "gamedata" or event == "data" then
         local ok, why = self.game:load(data)
         if not ok then
             self:emit("error", { message = "Cannot show this game: " .. tostring(why) })
@@ -130,6 +132,8 @@ function Play:_handle(event, data)
     elseif event == "chat" then
         local line = self.chat:add_ogs(data, self.me)
         if line then self:emit("chat", { line = line }) end
+    elseif event == "reset-chats" then
+        self.chat:clear()                      -- the server replays the chat log next
     elseif event == "chat/remove" then
         self.chat:remove_ids((data or {}).chat_ids)
     elseif event == "removed_stones" then

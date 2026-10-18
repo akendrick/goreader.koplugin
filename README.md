@@ -18,7 +18,8 @@ goreader/
     analysis.lua   AI review data in the SGF (GA/GV), mistakes, suggestions
     ogsgame.lua    an OGS game: gamedata/move/clock/phase -> Game, clocks, result
     ogsplay.lua    play or watch one OGS game: stage/confirm moves, resync, chat
-    chat.lua       game chat store: cleaning, mute, rate limit
+    chat.lua       game and room chat store: cleaning, mute, rate limit
+    room.lua       one OGS chat room: roster, topic, throttled redraws
   engine/
     gtp.lua        GTP scripts, response parsing, one-shot process runner
     engines.lua    Pachi, GNU Go and generic adapters (same interface)
