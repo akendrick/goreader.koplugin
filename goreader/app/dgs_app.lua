@@ -125,23 +125,25 @@ local function side_of(client, g)
     return nil, g.white
 end
 
-function App:open()
+function App:open(up)
+    up = up or function() up() end
     self:with_client(function(client, why)
         if not client then
             if why ~= "cancelled" then Env.info("Could not sign in to Dragon Go Server (" .. tostring(why) .. ").") end
-            self:go_home()
+            up()
             return
         end
         Env.with_progress("Loading your games…", function()
             local games, err = retrying(client, function() return client:running_games() end)
-            if not games then Env.info("Could not load your games (" .. tostring(err) .. ")."); self:go_home(); return end
-            if #games == 0 then Env.info("You have no running games on Dragon Go Server."); self:go_home(); return end
-            self:show_list(client, games)
+            if not games then Env.info("Could not load your games (" .. tostring(err) .. ")."); up(); return end
+            if #games == 0 then Env.info("You have no running games on Dragon Go Server."); up(); return end
+            self:show_list(client, games, up)
         end)
     end)
 end
 
-function App:show_list(client, games)
+function App:show_list(client, games, up)
+    up = up or function() self:go_home() end
     local Menu = require("ui/widget/menu")
     local rows, turn_count = {}, 0
     for _, g in ipairs(games) do
@@ -163,9 +165,9 @@ function App:show_list(client, games)
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = true,
         onMenuSelect = function(_, item)
             UIManager:close(menu)
-            Env.safe("open game", function() self:open_game(client, item) end)
+            Env.safe("open game", function() self:open_game(client, item, function() self:open(up) end) end)
         end,
-        close_callback = function() UIManager:close(menu); self:go_home() end,
+        close_callback = function() UIManager:close(menu); up() end,
     }
     UIManager:show(menu)
 end
@@ -174,13 +176,14 @@ end
 -- One game
 -- ---------------------------------------------------------------------------
 
-function App:open_game(client, row)
+function App:open_game(client, row, back)
+    back = back or function() back() end
     local gid = row.game.id
     Env.with_progress("Loading the game…", function()
         local sgf, err = retrying(client, function() return client:download_sgf(gid) end)
-        if not sgf then Env.info("Could not load the game (" .. tostring(err) .. ")."); self:go_home(); return end
+        if not sgf then Env.info("Could not load the game (" .. tostring(err) .. ")."); back(); return end
         -- Nothing for you to do here: open it as a replay of the game
-        if not row.my_turn then return self:open_replay(row, sgf) end
+        if not row.my_turn then return self:open_replay(row, sgf, back) end
         local game, gerr = DGSGame.new{ sgf = sgf, my_color = row.my_color, gid = gid,
                                         move_id = row.game.move_id, opponent = row.opponent }
         if not game then Env.info("Cannot show this game: " .. tostring(gerr)); return end
@@ -205,7 +208,7 @@ function App:open_game(client, row)
         }
         local screen
         ctl.on_change = function() if screen then screen:update() end end
-        screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
+        screen = GameScreen:new{ controller = ctl, on_close = function() back() end }
         UIManager:show(screen)
         UIManager:setDirty(nil, "full")
     end)
@@ -248,9 +251,10 @@ function App:play_out(dgs_ctl, row)
 end
 
 -- A game that is not waiting on you: replay it (opens on the latest move, or move 40 if it is finished)
-function App:open_replay(row, sgf)
+function App:open_replay(row, sgf, back)
+    back = back or function() back() end
     local game = SGF.parse(sgf)
-    if not game then Env.info("This game could not be read."); return self:go_home() end
+    if not game then Env.info("This game could not be read."); return back() end
     local model = ReviewModel.new{ game = game }
     model:go_to_start_position()                  -- latest move, or move 40 for a finished game
     local lfs = require("libs/libkoreader-lfs")
@@ -279,7 +283,7 @@ function App:open_replay(row, sgf)
     }
     local screen
     ctl.on_change = function() if screen then screen:update() end end
-    screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
+    screen = GameScreen:new{ controller = ctl, on_close = function() back() end }
     UIManager:show(screen)
     UIManager:setDirty(nil, "full")
 end

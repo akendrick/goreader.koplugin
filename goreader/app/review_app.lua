@@ -31,7 +31,8 @@ function App:storage()
     return self._storage
 end
 
-function App:open_library()
+function App:open_library(up)
+    up = up or function() up() end
     local storage = self:storage()
     storage:ensure()
     local moved = storage:import_dropped()
@@ -42,7 +43,7 @@ function App:open_library()
         Env.info(self.filter ~= "" and ("No games match \"" .. self.filter .. "\".")
             or ("No saved games yet.\nCopy .sgf files to:\n" .. storage.dirs.import))
         self.filter = ""
-        return self:go_home()
+        return up()
     end
     local Menu = require("ui/widget/menu")
     local items = {}
@@ -58,33 +59,34 @@ function App:open_library()
         item_table = items, items_per_page = per_page,
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = false,
         title_bar_left_icon = "appbar.search",
-        onLeftButtonTap = function() UIManager:close(menu); self:ask_filter() end,
+        onLeftButtonTap = function() UIManager:close(menu); self:ask_filter(up) end,
         onMenuSelect = function(_, item)
             UIManager:close(menu)
-            Env.safe("open game", function() self:open_game(item.entry) end)
+            Env.safe("open game", function() self:open_game(item.entry, function() self:open_library(up) end) end)
         end,
-        onMenuHold = function(_, item) self:game_options(menu, item.entry) end,
-        close_callback = function() UIManager:close(menu); self:go_home() end,
+        onMenuHold = function(_, item) self:game_options(menu, item.entry, up) end,
+        close_callback = function() UIManager:close(menu); up() end,
     }
     UIManager:show(menu)
 end
 
-function App:ask_filter()
+function App:ask_filter(up)
+    up = up or function() self:go_home() end
     local InputDialog = require("ui/widget/inputdialog")
     local dlg
     dlg = InputDialog:new{
         title = "Search saved games (name, player, event)", input = self.filter, input_type = "text",
         buttons = {{
-            { text = "Show all", callback = function() UIManager:close(dlg); self.filter = ""; self:open_library() end },
+            { text = "Show all", callback = function() UIManager:close(dlg); self.filter = ""; self:open_library(up) end },
             { text = "Search", is_enter_default = true, callback = function()
-                self.filter = dlg:getInputText() or ""; UIManager:close(dlg); self:open_library() end },
+                self.filter = dlg:getInputText() or ""; UIManager:close(dlg); self:open_library(up) end },
         }},
     }
     UIManager:show(dlg)
     dlg:onShowKeyboard()
 end
 
-function App:game_options(menu, entry)
+function App:game_options(menu, entry, up)
     local ButtonDialog = require("ui/widget/buttondialog")
     local dialog
     dialog = ButtonDialog:new{
@@ -100,7 +102,7 @@ function App:game_options(menu, entry)
                         local ok, err = self:storage():delete_game(entry.path)
                         UIManager:close(menu)
                         Env.info(ok and "Deleted." or ("Could not delete: " .. tostring(err)), 2)
-                        self:open_library()
+                        self:open_library(up)
                     end,
                 })
             end } },
@@ -110,11 +112,12 @@ function App:game_options(menu, entry)
     UIManager:show(dialog)
 end
 
-function App:open_game(entry)
+function App:open_game(entry, back)
+    back = back or function() back() end
     local text, err = self:storage():read(entry.path)
-    if not text then Env.info("Could not read the file: " .. tostring(err)); return self:go_home() end
+    if not text then Env.info("Could not read the file: " .. tostring(err)); return back() end
     local game = SGF.parse(text)
-    if not game then Env.info("This file is not a readable SGF game."); return self:go_home() end
+    if not game then Env.info("This file is not a readable SGF game."); return back() end
     local model = ReviewModel.new{ game = game }
     model:go_to_start_position()                  -- latest move, or move 40 for a finished game
     local ctl = Controller.new{
@@ -139,7 +142,7 @@ function App:open_game(entry)
     }
     local screen
     ctl.on_change = function() if screen then screen:update() end end
-    screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
+    screen = GameScreen:new{ controller = ctl, on_close = function() back() end }
     UIManager:show(screen)
     UIManager:setDirty(nil, "full")
 end

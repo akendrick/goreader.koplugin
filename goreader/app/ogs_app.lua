@@ -36,7 +36,8 @@ function App:with_session(cb)
     end)
 end
 
-function App:connection_test()
+function App:connection_test(up)
+    up = up or function() self:go_home() end
     Env.when_online(function()
         Env.with_progress("Testing the connection to OGS…", function()
             local s = Session.new(Env.ogs_env())
@@ -58,7 +59,7 @@ function App:connection_test()
                 verdict = "Could not connect: " .. tostring(why)
                 s:close()
             end
-            Env.show_text("OGS connection test", verdict .. "\n\n" .. s:report(), function() self:go_home() end)
+            Env.show_text("OGS connection test", verdict .. "\n\n" .. s:report(), up)
         end)
     end)
 end
@@ -72,7 +73,8 @@ local function player_text(p)
     return (p.username or "?") .. " (" .. OGSGame.rank_text(p.rank) .. ")"
 end
 
-function App:show_game_list(session, games, size_label, filter_index, page, total)
+function App:show_game_list(session, games, size_label, filter_index, page, total, up)
+    up = up or function() self:go_home() end
     local Menu = require("ui/widget/menu")
     local items = {}
     for _, g in ipairs(games) do
@@ -98,21 +100,25 @@ function App:show_game_list(session, games, size_label, filter_index, page, tota
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = true,
         onMenuSelect = function(_, item)
             UIManager:close(menu)
-            if item.more then return Env.safe("games", function() self:watch_live(filter_index, (page or 0) + 1) end) end
-            if item.previous then return Env.safe("games", function() self:watch_live(filter_index, (page or 0) - 1) end) end
-            self:watch(session, item.game)
+            if item.more then return Env.safe("games", function() self:watch_live(filter_index, (page or 0) + 1, up) end) end
+            if item.previous then return Env.safe("games", function() self:watch_live(filter_index, (page or 0) - 1, up) end) end
+            -- leaving the game comes back to THIS list, one level up
+            self:watch(session, item.game, function()
+                self:show_game_list(session, games, size_label, filter_index, page, total, up)
+            end)
         end,
-        close_callback = function() UIManager:close(menu); self:go_home() end,
+        close_callback = function() UIManager:close(menu); up() end,
     }
     UIManager:show(menu)
 end
 
-function App:watch(session, game)
+function App:watch(session, game, up)
+    up = up or function() self:go_home() end
     local title = (game.black and game.black.username or "?") .. " vs " .. (game.white and game.white.username or "?")
     local ctl = Controller.new{ session = session, game_id = game.id, title = title,
                                 show_text = Env.show_text }
     ctl:open()
-    local screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
+    local screen = GameScreen:new{ controller = ctl, on_close = up }
     ctl.on_change = function() screen:update() end
     UIManager:show(screen)
     UIManager:setDirty(nil, "full")
@@ -159,13 +165,14 @@ function App.local_filter(games, where)
     return out
 end
 
-function App:watch_live(filter_index, page)
+function App:watch_live(filter_index, page, up)
+    up = up or function() up() end
     local f = FILTERS[filter_index or 1]
     page = page or 0
     self:with_session(function(session, why, failed)
         if not session then
             Env.show_text("OGS", "Could not connect: " .. tostring(why) .. (failed and ("\n\n" .. failed:report()) or ""),
-                function() self:go_home() end)
+                function() up() end)
             return
         end
         local function ask(from, limit)
@@ -183,7 +190,7 @@ function App:watch_live(filter_index, page)
         if f.order == "weak" or page > 0 then
             local _, err, data = ask(0, 1)                       -- just to learn how many games match
             total = data and data.size
-            if not total then Env.info("Could not get the game list: " .. tostring(err and (err.message or err.code) or "no answer")); self:go_home(); return end
+            if not total then Env.info("Could not get the game list: " .. tostring(err and (err.message or err.code) or "no answer")); up(); return end
         end
         local from = App.page_start(f, total, page)
         local limit = App.PAGE
@@ -196,7 +203,7 @@ function App:watch_live(filter_index, page)
             if not all then
                 Env.info("Could not get the game list.\n" .. tostring(err and (err.message or err.code) or "no answer")
                     .. "\n(and without a filter: " .. tostring(err2 and (err2.message or err2.code) or "no answer") .. ")")
-                self:go_home()
+                up()
                 return
             end
             results = App.local_filter(all, f.where)
@@ -207,25 +214,28 @@ function App:watch_live(filter_index, page)
             end
             total = total or #results
         end
-        if #results == 0 then Env.info("No live games match (" .. f.label .. ")."); self:go_home(); return end
+        if #results == 0 then Env.info("No live games match (" .. f.label .. ")."); up(); return end
         if f.order == "weak" then                               -- show the weakest players' games first
             local rev = {}
             for i = #results, 1, -1 do rev[#rev + 1] = results[i] end
             results = rev
         end
-        self:show_game_list(session, results, f.label, filter_index, page, total)
+        self:show_game_list(session, results, f.label, filter_index, page, total, up)
     end)
 end
 
-function App:choose_filter()
+function App:choose_filter(up)
+    up = up or function() self:go_home() end
     local ButtonDialog = require("ui/widget/buttondialog")
     local dialog
     local buttons = {}
     for i, f in ipairs(FILTERS) do
         buttons[#buttons + 1] = { { text = f.label, callback = function()
-            UIManager:close(dialog); self:watch_live(i) end } }
+            UIManager:close(dialog)
+            -- exiting the list comes back to this dialog, one level up
+            self:watch_live(i, 0, function() self:choose_filter(up) end) end } }
     end
-    buttons[#buttons + 1] = { { text = "Cancel", callback = function() UIManager:close(dialog); self:go_home() end } }
+    buttons[#buttons + 1] = { { text = "Cancel", callback = function() UIManager:close(dialog); up() end } }
     dialog = ButtonDialog:new{ title = "Which games?", buttons = buttons }
     UIManager:show(dialog)
 end
@@ -234,10 +244,11 @@ end
 -- Chat room (read-only snapshot)
 -- ---------------------------------------------------------------------------
 
-function App:listen_room(channel)
+function App:listen_room(channel, up)
     channel = channel or "global-english"
+    up = up or function() up() end
     self:with_session(function(session, why)
-        if not session then Env.info("Could not connect: " .. tostring(why)); self:go_home(); return end
+        if not session then Env.info("Could not connect: " .. tostring(why)); up(); return end
         local chat = Chat.new()
         local topic
         session.ogs:on("chat-message", function(ev) if ev.channel == channel then chat:add_room(ev) end end)
@@ -251,7 +262,7 @@ function App:listen_room(channel)
             for _, l in ipairs(lines) do out[#out + 1] = Chat.line_text(l, OGSGame.rank_text(l.rank)) end
             Env.show_text("Room " .. channel .. " (" .. #lines .. " lines)",
                 (topic and (topic .. "\n\n") or "") .. (#out > 0 and table.concat(out, "\n") or "Nothing arrived."),
-                function() self:go_home() end)
+                function() up() end)
         end)
     end)
 end
