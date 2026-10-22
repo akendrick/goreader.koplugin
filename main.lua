@@ -305,20 +305,29 @@ function GOReader:_apps()
     return self.apps
 end
 
+-- Everything GOReader can do: the home window and the main menu list the same entries
+function GOReader:_entries()
+    local apps = self:_apps()
+    return {
+        { text = "SGF Game", mandatory = "record / play", what = "sgf game", run = function() apps.sgf:open() end },
+        { text = "Saved games (review)", mandatory = "SGF", what = "saved games", run = function() apps.review:open_library() end },
+        { text = "Dragon Go Server", mandatory = "your games", what = "dragon go server", run = function() apps.dgs:open() end },
+        { text = "Watch OGS games", mandatory = "live", what = "ogs", run = function() apps.ogs:choose_filter() end },
+        { text = "Go books", mandatory = "interactive", what = "books", run = function() self:showBookList() end },
+        { text = "OGS chat room", mandatory = "read only", what = "ogs chat", run = function() apps.ogs:listen_room() end },
+        { text = "OGS connection test", mandatory = "", what = "ogs test", run = function() apps.ogs:connection_test() end },
+    }
+end
+
 function GOReader:showHome()
     if self.home_menu then UIManager:close(self.home_menu); self.home_menu = nil end
     local Menu = require("ui/widget/menu")
     local apps = self:_apps()
-    local function run(what, fn) return function() UIManager:close(self.home_menu); self.home_menu = nil; Env.safe(what, fn) end end
-    local items = {
-        { text = "SGF Game", mandatory = "record / play", callback = run("sgf game", function() apps.sgf:open() end) },
-        { text = "Saved games (review)", mandatory = "SGF", callback = run("saved games", function() apps.review:open_library() end) },
-        { text = "Dragon Go Server", mandatory = "your games", callback = run("dragon go server", function() apps.dgs:open() end) },
-        { text = "Watch OGS games", mandatory = "live", callback = run("ogs", function() apps.ogs:choose_filter() end) },
-        { text = "Go books", mandatory = "interactive", callback = run("books", function() self:showBookList() end) },
-        { text = "OGS chat room", mandatory = "read only", callback = run("ogs chat", function() apps.ogs:listen_room() end) },
-        { text = "OGS connection test", mandatory = "", callback = run("ogs test", function() apps.ogs:connection_test() end) },
-    }
+    local items = {}
+    for _, e in ipairs(self:_entries()) do
+        items[#items + 1] = { text = e.text, mandatory = e.mandatory,
+            callback = function() UIManager:close(self.home_menu); self.home_menu = nil; Env.safe(e.what, e.run) end }
+    end
     local menu
     menu = Menu:new{
         title = _("GOReader"), item_table = items,
@@ -334,12 +343,25 @@ end
 
 function GOReader:onOpenGOReader() self:showHome(); return true end
 
+-- KOReader lists only the entries named in its menu order: put GOReader at the top of the main list
+function GOReader:_put_menu_first()
+    for _, name in ipairs({ "ui/elements/filemanager_menu_order", "ui/elements/reader_menu_order" }) do
+        local ok, order = pcall(require, name)
+        if ok and type(order) == "table" and type(order.main) == "table" then
+            local present = false
+            for _, id in ipairs(order.main) do if id == "goreader" then present = true end end
+            if not present then table.insert(order.main, 1, "goreader") end
+        end
+    end
+end
+
 function GOReader:addToMainMenu(menu_items)
-    menu_items.goreader = {
-        text = _("GOReader"),
-        sorting_hint = "main",
-        callback = function() self:showHome() end,
-    }
+    local subs = {}
+    for _, e in ipairs(self:_entries()) do
+        subs[#subs + 1] = { text = e.text, callback = function() Env.safe(e.what, e.run) end }
+    end
+    menu_items.goreader = { text = _("GOReader"), sorting_hint = "main", sub_item_table = subs }
+    self:_put_menu_first()
 end
 
 return GOReader

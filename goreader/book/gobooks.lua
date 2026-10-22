@@ -366,9 +366,55 @@ end
        { op = "rect",   x, y, w, h, stroke, sw, fill }
        { op = "text",   x, y, text, size, color }
      All in diagram coordinates. `use` references are expanded from <defs>. ]]
+-- Letters printed on empty points leave a hole in the book's grid lines. Where
+-- the letter is not shown in this frame, the hole is filled so no gap is left.
+local HOLE_MAX, TEXT_NEAR = 40, 14
+
+local function fill_holes(segs, texts)
+    local rows, cols = {}, {}
+    for _, s in ipairs(segs) do
+        if math.abs(s[2] - s[4]) < 1e-6 then
+            local k = string.format("%.2f", s[2]); rows[k] = rows[k] or {}
+            rows[k][#rows[k] + 1] = { math.min(s[1], s[3]), math.max(s[1], s[3]), s[2] }
+        elseif math.abs(s[1] - s[3]) < 1e-6 then
+            local k = string.format("%.2f", s[1]); cols[k] = cols[k] or {}
+            cols[k][#cols[k] + 1] = { math.min(s[2], s[4]), math.max(s[2], s[4]), s[1] }
+        end
+    end
+    local function near(x, y)
+        for _, t in ipairs(texts) do
+            if math.abs(t.x - x) <= TEXT_NEAR and math.abs(t.y - y) <= TEXT_NEAR then return true end
+        end
+        return false
+    end
+    local extra = {}
+    local function scan(groups, horizontal)
+        for _, g in pairs(groups) do
+            table.sort(g, function(a, b) return a[1] < b[1] end)
+            for i = 1, #g - 1 do
+                local gap = g[i + 1][1] - g[i][2]
+                if gap > 0.5 and gap < HOLE_MAX then
+                    local mid, fixed = (g[i][2] + g[i + 1][1]) / 2, g[i][3]
+                    local x, y = horizontal and mid or fixed, horizontal and fixed or mid
+                    if not near(x, y) then
+                        if horizontal then extra[#extra + 1] = { g[i][2], fixed, g[i + 1][1], fixed }
+                        else extra[#extra + 1] = { fixed, g[i][2], fixed, g[i + 1][1] } end
+                    end
+                end
+            end
+        end
+    end
+    scan(rows, true); scan(cols, false)
+    return extra
+end
+
 function Diagram:ops(frame)
     frame = frame or self.frame
     local spec, ops = self.spec, {}
+    local texts = {}
+    for _, it in ipairs(spec.items) do
+        if it.kind == "text" and visible_at(it.v, frame) then texts[#texts + 1] = it end
+    end
     local function add_def(def, ox, oy)
         if def.kind == "circle" then
             ops[#ops + 1] = { op = "circle", cx = ox, cy = oy, r = def.r, fill = def.fill, stroke = def.stroke, sw = def.sw }
@@ -395,6 +441,9 @@ function Diagram:ops(frame)
                 ops[#ops + 1] = { op = "text", x = it.x, y = it.y, text = it.text, size = cls.size, color = cls.fill }
             elseif it.kind == "lines" then
                 for _, s in ipairs(it.segs) do
+                    ops[#ops + 1] = { op = "line", x1 = s[1], y1 = s[2], x2 = s[3], y2 = s[4], sw = it.sw, color = it.stroke }
+                end
+                for _, s in ipairs(fill_holes(it.segs, texts)) do
                     ops[#ops + 1] = { op = "line", x1 = s[1], y1 = s[2], x2 = s[3], y2 = s[4], sw = it.sw, color = it.stroke }
                 end
             elseif it.kind == "rect" then
