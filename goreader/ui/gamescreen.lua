@@ -52,7 +52,7 @@ function GameScreen.layout(sw, sh, st, dp)
 
     local bottom = st.bottom or { kind = "buttons", rows = {} }
     local confirm_h = dp(150)
-    local row_h, gap = dp(44), dp(6)
+    local row_h, gap = (st.compact and dp(36) or dp(44)), dp(6)
     local rows = (bottom.kind == "buttons") and bottom.rows or {}
     local rows_h = (#rows > 0) and (#rows * (row_h + gap) + gap) or 0
 
@@ -60,10 +60,11 @@ function GameScreen.layout(sw, sh, st, dp)
     -- confirmation dialog (or the status line and button row) would not fit
     -- below it. It keeps the same size in both modes so it never jumps.
     local status_h = dp(34)
-    local reserve = math.max(confirm_h, rows_h + status_h) + dp(8)
+    local reserve = (st.no_confirm and (rows_h + status_h) or math.max(confirm_h, rows_h + status_h)) + dp(8)
     local avail = sh - y - reserve
-    local board_w = math.min(sw - 2 * pad, avail)
-    local lay = BoardView.layout(board_w, (st.board and st.board.size) or 19, { coords = true })
+    local bpad = st.full_board and 0 or pad                 -- a full-width board has no margins and no A-T / 1-19 labels
+    local board_w = math.min(sw - 2 * bpad, avail)
+    local lay = BoardView.layout(board_w, (st.board and st.board.size) or 19, { coords = not st.full_board })
     r.board = { x = math.floor((sw - board_w) / 2), y = y + dp(4), w = board_w, h = lay.height, lay = lay }
     y = r.board.y + r.board.h + dp(4)
 

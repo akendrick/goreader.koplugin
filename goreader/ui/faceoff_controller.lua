@@ -21,7 +21,7 @@ local REASONS = {
 function Controller.new(opts)
     return setmetatable({
         live = assert(opts.live), save = opts.save, choose = opts.choose or function() end,
-        leave = opts.leave or function() end,
+        leave = opts.leave or function() end, delete = opts.delete,
         resigning = nil, message = nil, path = nil, on_change = function() end,
     }, Controller)
 end
@@ -65,6 +65,7 @@ function Controller:strip(side)
     else text = name_of(lg:to_move()) .. " is thinking" end
     local buttons = {
         { id = "pass", label = "Pass", enabled = mine },
+        { id = "undo", label = "Undo", enabled = lg:move_count() > 0 },
         { id = "resign", label = "Resign" },
     }
     if side == "W" then buttons[#buttons + 1] = { id = "menu", label = "Menu" } end   -- one shared menu, on White's side
@@ -115,6 +116,7 @@ function Controller:button(side, id)
     self.message = nil
     if id == "pass" then
         if lg:to_move() == side then lg:pass(); self.resigning = nil; self:autosave() end
+    elseif id == "undo" then lg:undo(); self.resigning = nil; self:autosave()
     elseif id == "resign" then self.resigning = side
     elseif id == "no" then self.resigning = nil
     elseif id == "yes" then lg:resign(side); self.resigning = nil; self:autosave()
@@ -123,13 +125,28 @@ function Controller:button(side, id)
     elseif id == "exit" then self.leave()
     elseif id == "menu" then
         self.choose("Game menu", { { "undo", "Undo the last move" }, { "save", "Save now" },
-            { "exit", "Leave the game" }, { "no", "Back to the game" } }, function(c)
+            { "delete", "Delete this game" }, { "exit", "Leave the game" }, { "no", "Back to the game" } }, function(c)
             if c == "undo" then lg:undo(); self:autosave()
             elseif c == "save" then self:autosave()
+            elseif c == "delete" then self:ask_delete(); return
             elseif c == "exit" then self:back_ask() end
             self.on_change()
         end)
     end
+end
+
+-- Delete this game and its saved file, after a confirmation
+function Controller:ask_delete()
+    self.choose("Delete this game?\nThe saved record is removed too.", { { "yes", "Delete the game" }, { "no", "Keep it" } }, function(c)
+        if c == "yes" then
+            if self.path and self.delete then self.delete(self.path) end
+            self.path = nil
+            self.save = nil
+            self.leave()
+        else
+            self.on_change()
+        end
+    end)
 end
 
 -- Leaving the game: it is already saved after every move

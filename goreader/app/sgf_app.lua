@@ -78,18 +78,23 @@ function App:edit_info(info, cb)
     ask(1)
 end
 
+function App:deleter()
+    return function(path) return self:storage():delete_game(path) end
+end
+
 function App:start(mode, size, back)
     local live = LiveGame.new{ size = size, mode = mode, komi = size == 9 and 5.5 or 6.5 }
     local screen
     if mode == "play" then
         local FaceoffScreen = require("goreader.ui.faceoff_screen")
-        local ctl = Faceoff.new{ live = live, save = self:saver(), choose = Env.choice_dialog,
+        local ctl = Faceoff.new{ live = live, save = self:saver(), delete = self:deleter(), choose = Env.choice_dialog,
                                  leave = function() if screen then screen:close() end end }
         screen = FaceoffScreen:new{ controller = ctl, on_close = function() back() end }
         ctl.on_change = function() screen:update() end
         UIManager:show(screen)
     else
-        local ctl = Record.new{ live = live, save = self:saver(), choose = Env.choice_dialog,
+        local ctl = Record.new{ live = live, save = self:saver(), delete = self:deleter(), choose = Env.choice_dialog,
+                                close = function() if screen then screen:close() end end,
                                 edit_info = function(info, cb) self:edit_info(info, cb) end }
         screen = GameScreen:new{ controller = ctl, on_close = function() back() end }
         ctl.on_change = function() screen:update() end

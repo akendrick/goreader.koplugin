@@ -42,7 +42,7 @@ function App:open_library(up)
     if #page.items == 0 then
         Env.info(self.filter ~= "" and ("No games match \"" .. self.filter .. "\".")
             or ("No saved games yet.\nCopy .sgf files to:\n" .. storage.dirs.import))
-        self.filter = ""
+        self.filter, self.delete_mode = "", false
         return up()
     end
     local Menu = require("ui/widget/menu")
@@ -51,10 +51,16 @@ function App:open_library(up)
         items[#items + 1] = { text = e.title, mandatory = e.size .. "x" .. e.size .. (e.result ~= "" and ("  " .. Library.latin_only(e.result)) or ""),
                               entry = e }
     end
+    -- a visible way to delete: the first row switches the list to "tap a game to delete it"
+    if self.delete_mode then
+        table.insert(items, 1, { text = "Done deleting", mandatory = "", action = "done" })
+    else
+        table.insert(items, 1, { text = "Delete games…", mandatory = "", action = "delete" })
+    end
     local per_page = Env.settings():get("view.games_per_page")
     local menu
     menu = Menu:new{
-        title = (#page.items) .. " saved games" .. (self.filter ~= "" and ("  ·  \"" .. self.filter .. "\"") or "")
+        title = (self.delete_mode and "Tap a game to DELETE it" or ((#page.items) .. " saved games")) .. (self.filter ~= "" and ("  ·  \"" .. self.filter .. "\"") or "")
             .. (moved > 0 and ("  ·  " .. moved .. " imported") or ""),
         item_table = items, items_per_page = per_page,
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = false,
@@ -62,12 +68,31 @@ function App:open_library(up)
         onLeftButtonTap = function() UIManager:close(menu); self:ask_filter(up) end,
         onMenuSelect = function(_, item)
             UIManager:close(menu)
+            if item.action then
+                self.delete_mode = (item.action == "delete")
+                return self:open_library(up)
+            end
+            if self.delete_mode then return self:confirm_delete(item.entry, up) end
             Env.safe("open game", function() self:open_game(item.entry, function() self:open_library(up) end) end)
         end,
         onMenuHold = function(_, item) self:game_options(menu, item.entry, up) end,
-        close_callback = function() UIManager:close(menu); up() end,
+        close_callback = function() UIManager:close(menu); self.delete_mode = false; up() end,
     }
     UIManager:show(menu)
+end
+
+function App:confirm_delete(entry, up)
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = "Delete \"" .. entry.title .. "\"?\nThe file is removed from the Kobo.",
+        ok_text = "Delete",
+        cancel_callback = function() self:open_library(up) end,
+        ok_callback = function()
+            local ok, err = self:storage():delete_game(entry.path)
+            Env.info(ok and "Deleted." or ("Could not delete: " .. tostring(err)), 2)
+            self:open_library(up)
+        end,
+    })
 end
 
 function App:ask_filter(up)

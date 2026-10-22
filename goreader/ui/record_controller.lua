@@ -25,7 +25,7 @@ local REASONS = {
 function Controller.new(opts)
     return setmetatable({
         live = assert(opts.live), edit_info = opts.edit_info or function() end,
-        choose = opts.choose or function() end, save = opts.save,
+        choose = opts.choose or function() end, save = opts.save, delete = opts.delete, close = opts.close,
         path = nil, message = nil, saved_moves = -1, on_change = function() end,
     }, Controller)
 end
@@ -81,11 +81,12 @@ function Controller:state()
     if lg.state == "scoring" then
         row = { { id = "resume", label = "Keep playing" }, { id = "count_done", label = "Done", style = "primary" }, { id = "info", label = "Info" } }
     elseif lg.state == "over" then
-        row = { { id = "info", label = "Info" }, { id = "export", label = "Saved" } }
+        row = { { id = "info", label = "Info" }, { id = "export", label = "Saved" }, { id = "delete", label = "Delete" } }
     else
         row = {
             { id = "undo", label = "Undo", enabled = lg:move_count() > 0 }, { id = "pass", label = "Pass" },
             { id = "resign", label = "Resign" }, { id = "info", label = "Info" }, { id = "finish", label = "Finish" },
+            { id = "delete", label = "Delete" },
         }
     end
     return {
@@ -95,6 +96,7 @@ function Controller:state()
         to_move = (lg.state == "playing") and lg:to_move() or nil, turn_fill = true,
         board = board, status = status, comment = "",
         bottom = { kind = "buttons", rows = { row } },
+        full_board = true, compact = true, no_confirm = true,
     }
 end
 
@@ -128,6 +130,8 @@ function Controller:button(id)
             elseif c == "draw" then lg:set_result("0") end
             self:autosave(); self.on_change()
         end)
+    elseif id == "delete" then
+        self:ask_delete()
     elseif id == "info" then
         self.edit_info(lg.info, function(fields)
             if fields then lg:set_info(fields); self:autosave() end
@@ -136,8 +140,21 @@ function Controller:button(id)
     end
 end
 
+-- Delete this game (and its saved file) after a confirmation
+function Controller:ask_delete()
+    self.choose("Delete this game?\nThe saved record is removed too.", { { "yes", "Delete the game" }, { "no", "Keep it" } }, function(c)
+        if c == "yes" then
+            if self.path and self.delete then self.delete(self.path) end
+            self.path, self.deleted = nil, true
+            if self.close then self.close() end
+        end
+        self.on_change()
+    end)
+end
+
 -- Leaving: the game is already saved; save once more in case of a late change
 function Controller:back()
+    if self.deleted then return true end
     if self.live:move_count() > 0 and self.saved_moves ~= self.live:move_count() then self:autosave() end
     return true
 end

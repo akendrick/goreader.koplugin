@@ -17,11 +17,11 @@ local Faceoff = InputContainer:extend{ name = "goreader_faceoff", controller = n
 --[[ Pure layout. Returns { top = strip, line = rect, board = rect(+lay), bottom = strip } ]]
 function Faceoff.layout(sw, sh, size, dp)
     dp = dp or function(n) return n end
-    local pad = dp(8)
-    local strip_h, line_h = dp(130), dp(10)
+    local pad = 0
+    local strip_h, line_h = math.min(dp(110), math.floor(sh * 0.07)), dp(10)
     local avail = sh - 2 * strip_h - line_h
-    local board_w = math.min(sw - 2 * pad, avail - dp(8))
-    local lay = BoardView.layout(board_w, size, { coords = true })
+    local board_w = math.min(sw, avail)                            -- the full width of the screen, no A-T / 1-19 labels
+    local lay = BoardView.layout(board_w, size, { coords = false })
     local board_y = strip_h + line_h + math.floor((avail - lay.height) / 2)
     return {
         sw = sw, sh = sh, pad = pad,
