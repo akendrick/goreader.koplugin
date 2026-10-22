@@ -126,7 +126,7 @@ local function side_of(client, g)
 end
 
 function App:open(up)
-    up = up or function() up() end
+    up = up or function() self:go_home() end
     self:with_client(function(client, why)
         if not client then
             if why ~= "cancelled" then Env.info("Could not sign in to Dragon Go Server (" .. tostring(why) .. ").") end
@@ -241,7 +241,7 @@ end
 -- ---------------------------------------------------------------------------
 
 function App:open_game(client, row, back)
-    back = back or function() back() end
+    back = back or function() self:go_home() end
     local gid = row.game.id
     Env.with_progress("Loading the game…", function()
         local sgf, err = retrying(client, function() return client:download_sgf(gid) end)
@@ -316,7 +316,7 @@ end
 
 -- A game that is not waiting on you: replay it (opens on the latest move, or move 40 if it is finished)
 function App:open_replay(row, sgf, back)
-    back = back or function() back() end
+    back = back or function() self:go_home() end
     local game = SGF.parse(sgf)
     if not game then Env.info("This game could not be read."); return back() end
     local model = ReviewModel.new{ game = game }

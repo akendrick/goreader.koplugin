@@ -157,7 +157,7 @@ function Grid:_leave(fn)
     self.closed = true
     UIManager:close(self)
     UIManager:setDirty("all", "full")
-    fn()
+    Kit.safe(fn)
 end
 
 function Grid:onBack() self:close(); return true end
@@ -167,7 +167,7 @@ function Grid:close()
     self.closed = true
     UIManager:close(self)
     UIManager:setDirty("all", "full")
-    if self.on_close then self.on_close() end
+    if self.on_close then Kit.safe(self.on_close) end
 end
 
 return Grid

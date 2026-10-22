@@ -166,7 +166,7 @@ function App.local_filter(games, where)
 end
 
 function App:watch_live(filter_index, page, up)
-    up = up or function() up() end
+    up = up or function() self:go_home() end
     local f = FILTERS[filter_index or 1]
     page = page or 0
     self:with_session(function(session, why, failed)
@@ -246,7 +246,7 @@ end
 
 function App:listen_room(channel, up)
     channel = channel or "global-english"
-    up = up or function() up() end
+    up = up or function() self:go_home() end
     self:with_session(function(session, why)
         if not session then Env.info("Could not connect: " .. tostring(why)); up(); return end
         local chat = Chat.new()

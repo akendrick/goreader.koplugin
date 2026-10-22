@@ -127,6 +127,8 @@ function Kit.wrap(bb, text, px, max_w, bold)
     return lines
 end
 
+Kit.safe = require("goreader.ui.safe")
+
 --[[ Draw something upside-down (for a player sitting across the table).
      `fn(tmp)` draws into a temporary buffer w x h with (0,0) at its top-left, as
      if it were an ordinary strip; the result is rotated 180 degrees and copied

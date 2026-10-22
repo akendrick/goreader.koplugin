@@ -121,7 +121,7 @@ function Faceoff:close()
     self.closed = true
     UIManager:close(self)
     UIManager:setDirty("all", "full")
-    if self.on_close then self.on_close() end
+    if self.on_close then Kit.safe(self.on_close) end
 end
 
 return Faceoff

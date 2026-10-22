@@ -18,6 +18,7 @@ local RenderText     = require("ui/rendertext")
 local Blitbuffer     = require("ffi/blitbuffer")
 local Screen         = require("device").screen
 local Gobooks        = require("goreader.book.gobooks")
+local safe           = require("goreader.ui.safe")
 
 local DiagramView = InputContainer:extend{
     name = "goreader_diagramview",
@@ -333,7 +334,7 @@ function DiagramView:close()
     self:stop_autoplay()
     UIManager:close(self)
     UIManager:setDirty("all", "ui")             -- repaint the page under us
-    if self.on_close then self.on_close() end
+    if self.on_close then safe(self.on_close) end
     return true
 end
 

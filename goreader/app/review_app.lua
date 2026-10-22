@@ -32,7 +32,7 @@ function App:storage()
 end
 
 function App:open_library(up)
-    up = up or function() up() end
+    up = up or function() self:go_home() end
     local storage = self:storage()
     storage:ensure()
     local moved = storage:import_dropped()
@@ -113,7 +113,7 @@ function App:game_options(menu, entry, up)
 end
 
 function App:open_game(entry, back)
-    back = back or function() back() end
+    back = back or function() self:go_home() end
     local text, err = self:storage():read(entry.path)
     if not text then Env.info("Could not read the file: " .. tostring(err)); return back() end
     local game = SGF.parse(text)
