@@ -301,14 +301,16 @@ local Conn = {}
 Conn.__index = Conn
 WS.Conn = Conn
 
---[[ opts: socket (required), host, path, origin, headers, rand
+--[[ opts: socket (required), host, path, origin, headers, rand,
+            sleep (function(seconds), used while waiting for the handshake reply
+                   on a non-blocking socket; e.g. require("socket").sleep)
      Call :open() then :poll() regularly. ]]
 function WS.new(opts)
     assert(opts.socket and opts.host, "socket and host are required")
     local rand = opts.rand or math.random
     return setmetatable({
         sock = opts.socket, host = opts.host, path = opts.path or "/",
-        origin = opts.origin, headers = opts.headers, rand = rand,
+        origin = opts.origin, headers = opts.headers, rand = rand, sleep = opts.sleep,
         parser = Parser.new(), state = "new", queue = {}, close_code = nil,
     }, Conn)
 end
@@ -325,8 +327,9 @@ function Conn:_send_frame(op, payload)
     return true
 end
 
---[[ Do the opening handshake. Blocking up to `tries` polls of the socket
-     (each poll is the socket's own timeout). Returns true or nil, err. ]]
+--[[ Do the opening handshake. Blocking up to `tries` polls of the socket,
+     pausing 0.1 s between polls when a sleep function was given (a
+     non-blocking socket answers "timeout" at once). Returns true or nil, err. ]]
 function Conn:open(tries)
     self.key = WS.make_key(self.rand)
     local ok, err = self.sock:send(WS.handshake_request{
@@ -352,6 +355,8 @@ function Conn:open(tries)
         elseif rerr == "closed" then
             self.state = "closed"
             return nil, "connection closed during handshake"
+        elseif self.sleep then
+            self.sleep(0.1)
         end
     end
     self.sock:close(); self.state = "closed"

@@ -95,6 +95,36 @@ function Kit.text_right(bb, right, cy, text, px, color, bold, max_w)
     Kit.text_left(bb, right - w, cy, text, px, color, bold)
 end
 
+--[[ Word-wrap `text` to max_w pixels. Returns a list of lines (explicit
+     newlines are kept). Words longer than a line are broken. ]]
+function Kit.wrap(bb, text, px, max_w, bold)
+    local lines = {}
+    for para in (tostring(text) .. "\n"):gmatch("([^\n]*)\n") do
+        if para == "" then lines[#lines + 1] = ""
+        else
+            local line = ""
+            for token in para:gmatch("%S+") do
+                local word = token
+                local try = line == "" and word or (line .. " " .. word)
+                if Kit.text_width(bb, try, px, bold) <= max_w then
+                    line = try
+                else
+                    if line ~= "" then lines[#lines + 1] = line end
+                    while Kit.text_width(bb, word, px, bold) > max_w and #word > 1 do
+                        local cut = #word
+                        while cut > 1 and Kit.text_width(bb, word:sub(1, cut), px, bold) > max_w do cut = cut - 1 end
+                        while cut > 1 and word:byte(cut + 1) and word:byte(cut + 1) >= 0x80 and word:byte(cut + 1) < 0xC0 do cut = cut - 1 end
+                        lines[#lines + 1] = word:sub(1, cut); word = word:sub(cut + 1)
+                    end
+                    line = word
+                end
+            end
+            lines[#lines + 1] = line
+        end
+    end
+    return lines
+end
+
 -- ---------------------------------------------------------------------------
 -- Boxes and buttons
 -- ---------------------------------------------------------------------------
