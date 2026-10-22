@@ -19,7 +19,9 @@ local GameScreen  = require("goreader.ui.gamescreen")
 local App = {}
 App.__index = App
 
-function App.new() return setmetatable({ filter = "" }, App) end
+function App.new(opts) return setmetatable({ filter = "", home = opts and opts.home }, App) end
+
+function App:go_home() if self.home then self.home() end end
 
 function App:storage()
     if not self._storage then
@@ -40,7 +42,7 @@ function App:open_library()
         Env.info(self.filter ~= "" and ("No games match \"" .. self.filter .. "\".")
             or ("No saved games yet.\nCopy .sgf files to:\n" .. storage.dirs.import))
         self.filter = ""
-        return
+        return self:go_home()
     end
     local Menu = require("ui/widget/menu")
     local items = {}
@@ -62,7 +64,7 @@ function App:open_library()
             Env.safe("open game", function() self:open_game(item.entry) end)
         end,
         onMenuHold = function(_, item) self:game_options(menu, item.entry) end,
-        close_callback = function() UIManager:close(menu) end,
+        close_callback = function() UIManager:close(menu); self:go_home() end,
     }
     UIManager:show(menu)
 end
@@ -110,9 +112,9 @@ end
 
 function App:open_game(entry)
     local text, err = self:storage():read(entry.path)
-    if not text then Env.info("Could not read the file: " .. tostring(err)); return self:open_library() end
+    if not text then Env.info("Could not read the file: " .. tostring(err)); return self:go_home() end
     local game = SGF.parse(text)
-    if not game then Env.info("This file is not a readable SGF game."); return self:open_library() end
+    if not game then Env.info("This file is not a readable SGF game."); return self:go_home() end
     local model = ReviewModel.new{ game = game }
     model:go_to_start_position()                  -- latest move, or move 40 for a finished game
     local ctl = Controller.new{
@@ -137,7 +139,7 @@ function App:open_game(entry)
     }
     local screen
     ctl.on_change = function() if screen then screen:update() end end
-    screen = GameScreen:new{ controller = ctl, on_close = function() self:open_library() end }
+    screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
     UIManager:show(screen)
     UIManager:setDirty(nil, "full")
 end

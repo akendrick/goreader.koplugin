@@ -18,7 +18,10 @@ local Storage    = require("goreader.services.storage")
 local App = {}
 App.__index = App
 
-function App.new() return setmetatable({ client = nil }, App) end
+function App.new(opts) return setmetatable({ client = nil, home = opts and opts.home }, App) end
+
+-- Leaving anything returns to the GOReader home window
+function App:go_home() if self.home then self.home() end end
 
 -- ---------------------------------------------------------------------------
 -- Sign-in
@@ -125,12 +128,13 @@ function App:open()
     self:with_client(function(client, why)
         if not client then
             if why ~= "cancelled" then Env.info("Could not sign in to Dragon Go Server (" .. tostring(why) .. ").") end
+            self:go_home()
             return
         end
         Env.with_progress("Loading your games…", function()
             local games, err = retrying(client, function() return client:running_games() end)
-            if not games then Env.info("Could not load your games (" .. tostring(err) .. ")."); return end
-            if #games == 0 then Env.info("You have no running games on Dragon Go Server."); return end
+            if not games then Env.info("Could not load your games (" .. tostring(err) .. ")."); self:go_home(); return end
+            if #games == 0 then Env.info("You have no running games on Dragon Go Server."); self:go_home(); return end
             self:show_list(client, games)
         end)
     end)
@@ -160,7 +164,7 @@ function App:show_list(client, games)
             UIManager:close(menu)
             Env.safe("open game", function() self:open_game(client, item) end)
         end,
-        close_callback = function() UIManager:close(menu) end,
+        close_callback = function() UIManager:close(menu); self:go_home() end,
     }
     UIManager:show(menu)
 end
@@ -173,7 +177,7 @@ function App:open_game(client, row)
     local gid = row.game.id
     Env.with_progress("Loading the game…", function()
         local sgf, err = retrying(client, function() return client:download_sgf(gid) end)
-        if not sgf then Env.info("Could not load the game (" .. tostring(err) .. ")."); self:open(); return end
+        if not sgf then Env.info("Could not load the game (" .. tostring(err) .. ")."); self:go_home(); return end
         -- Nothing for you to do here: open it as a replay of the game
         if not row.my_turn then return self:open_replay(row, sgf) end
         local game, gerr = DGSGame.new{ sgf = sgf, my_color = row.my_color, gid = gid,
@@ -199,7 +203,7 @@ function App:open_game(client, row)
         }
         local screen
         ctl.on_change = function() if screen then screen:update() end end
-        screen = GameScreen:new{ controller = ctl, on_close = function() self:open() end }
+        screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
         UIManager:show(screen)
         UIManager:setDirty(nil, "full")
     end)
@@ -208,7 +212,7 @@ end
 -- A game that is not waiting on you: replay it (opens on the latest move, or move 40 if it is finished)
 function App:open_replay(row, sgf)
     local game = SGF.parse(sgf)
-    if not game then Env.info("This game could not be read."); return self:open() end
+    if not game then Env.info("This game could not be read."); return self:go_home() end
     local model = ReviewModel.new{ game = game }
     model:go_to_start_position()                  -- latest move, or move 40 for a finished game
     local lfs = require("libs/libkoreader-lfs")
@@ -237,7 +241,7 @@ function App:open_replay(row, sgf)
     }
     local screen
     ctl.on_change = function() if screen then screen:update() end end
-    screen = GameScreen:new{ controller = ctl, on_close = function() self:open() end }
+    screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
     UIManager:show(screen)
     UIManager:setDirty(nil, "full")
 end

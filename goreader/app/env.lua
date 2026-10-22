@@ -80,10 +80,10 @@ function Env.with_progress(text, fn)
     end)
 end
 
-function Env.show_text(title, text)
+function Env.show_text(title, text, on_close)
     local ok, TextViewer = pcall(require, "ui/widget/textviewer")
     if ok and TextViewer then
-        UIManager:show(TextViewer:new{ title = title, text = text, justified = false })
+        UIManager:show(TextViewer:new{ title = title, text = text, justified = false, close_callback = on_close })
     else
         UIManager:show(InfoMessage:new{ text = text })
     end

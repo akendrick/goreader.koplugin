@@ -20,7 +20,9 @@ local Chat       = require("goreader.core.chat")
 local App = {}
 App.__index = App
 
-function App.new() return setmetatable({ session = nil }, App) end
+function App.new(opts) return setmetatable({ session = nil, home = opts and opts.home }, App) end
+
+function App:go_home() if self.home then self.home() end end
 
 -- A connected session, opening one if needed; calls cb(session) or cb(nil, why)
 function App:with_session(cb)
@@ -56,7 +58,7 @@ function App:connection_test()
                 verdict = "Could not connect: " .. tostring(why)
                 s:close()
             end
-            Env.show_text("OGS connection test", verdict .. "\n\n" .. s:report())
+            Env.show_text("OGS connection test", verdict .. "\n\n" .. s:report(), function() self:go_home() end)
         end)
     end)
 end
@@ -100,7 +102,7 @@ function App:show_game_list(session, games, size_label, filter_index, page, tota
             if item.previous then return Env.safe("games", function() self:watch_live(filter_index, (page or 0) - 1) end) end
             self:watch(session, item.game)
         end,
-        close_callback = function() UIManager:close(menu) end,
+        close_callback = function() UIManager:close(menu); self:go_home() end,
     }
     UIManager:show(menu)
 end
@@ -110,7 +112,7 @@ function App:watch(session, game)
     local ctl = Controller.new{ session = session, game_id = game.id, title = title,
                                 show_text = Env.show_text }
     ctl:open()
-    local screen = GameScreen:new{ controller = ctl }
+    local screen = GameScreen:new{ controller = ctl, on_close = function() self:go_home() end }
     ctl.on_change = function() screen:update() end
     UIManager:show(screen)
     UIManager:setDirty(nil, "full")
@@ -162,7 +164,8 @@ function App:watch_live(filter_index, page)
     page = page or 0
     self:with_session(function(session, why, failed)
         if not session then
-            Env.show_text("OGS", "Could not connect: " .. tostring(why) .. (failed and ("\n\n" .. failed:report()) or ""))
+            Env.show_text("OGS", "Could not connect: " .. tostring(why) .. (failed and ("\n\n" .. failed:report()) or ""),
+                function() self:go_home() end)
             return
         end
         local function ask(from, limit)
@@ -180,7 +183,7 @@ function App:watch_live(filter_index, page)
         if f.order == "weak" or page > 0 then
             local _, err, data = ask(0, 1)                       -- just to learn how many games match
             total = data and data.size
-            if not total then Env.info("Could not get the game list: " .. tostring(err and (err.message or err.code) or "no answer")); return end
+            if not total then Env.info("Could not get the game list: " .. tostring(err and (err.message or err.code) or "no answer")); self:go_home(); return end
         end
         local from = App.page_start(f, total, page)
         local limit = App.PAGE
@@ -193,6 +196,7 @@ function App:watch_live(filter_index, page)
             if not all then
                 Env.info("Could not get the game list.\n" .. tostring(err and (err.message or err.code) or "no answer")
                     .. "\n(and without a filter: " .. tostring(err2 and (err2.message or err2.code) or "no answer") .. ")")
+                self:go_home()
                 return
             end
             results = App.local_filter(all, f.where)
@@ -203,7 +207,7 @@ function App:watch_live(filter_index, page)
             end
             total = total or #results
         end
-        if #results == 0 then Env.info("No live games match (" .. f.label .. ")."); return end
+        if #results == 0 then Env.info("No live games match (" .. f.label .. ")."); self:go_home(); return end
         if f.order == "weak" then                               -- show the weakest players' games first
             local rev = {}
             for i = #results, 1, -1 do rev[#rev + 1] = results[i] end
@@ -221,6 +225,7 @@ function App:choose_filter()
         buttons[#buttons + 1] = { { text = f.label, callback = function()
             UIManager:close(dialog); self:watch_live(i) end } }
     end
+    buttons[#buttons + 1] = { { text = "Cancel", callback = function() UIManager:close(dialog); self:go_home() end } }
     dialog = ButtonDialog:new{ title = "Which games?", buttons = buttons }
     UIManager:show(dialog)
 end
@@ -232,7 +237,7 @@ end
 function App:listen_room(channel)
     channel = channel or "global-english"
     self:with_session(function(session, why)
-        if not session then Env.info("Could not connect: " .. tostring(why)); return end
+        if not session then Env.info("Could not connect: " .. tostring(why)); self:go_home(); return end
         local chat = Chat.new()
         local topic
         session.ogs:on("chat-message", function(ev) if ev.channel == channel then chat:add_room(ev) end end)
@@ -245,7 +250,8 @@ function App:listen_room(channel)
             local out = {}
             for _, l in ipairs(lines) do out[#out + 1] = Chat.line_text(l, OGSGame.rank_text(l.rank)) end
             Env.show_text("Room " .. channel .. " (" .. #lines .. " lines)",
-                (topic and (topic .. "\n\n") or "") .. (#out > 0 and table.concat(out, "\n") or "Nothing arrived."))
+                (topic and (topic .. "\n\n") or "") .. (#out > 0 and table.concat(out, "\n") or "Nothing arrived."),
+                function() self:go_home() end)
         end)
     end)
 end

@@ -26,6 +26,8 @@ function GOReader:init()
     if self.ui.menu then self.ui.menu:registerToMainMenu(self) end
     local ok, Dispatcher = pcall(require, "dispatcher")
     if ok then                                  -- a gesture/shortcut action: "Open GOReader books"
+        Dispatcher:registerAction("goreader_home", {
+            category = "none", event = "OpenGOReader", title = _("Open GOReader"), general = true })
         Dispatcher:registerAction("goreader_books", {
             category = "none", event = "OpenGOReaderBooks", title = _("Open Go books"), general = true })
     end
@@ -132,11 +134,13 @@ function GOReader:showBookList()
     if not books then
         UIManager:show(InfoMessage:new{
             text = _("No Go books folder found.\nPut prepared books in:\n") .. Booklist.DEFAULT_DIR })
+        self:showHome()
         return
     end
     if #books == 0 then
         UIManager:show(InfoMessage:new{
             text = _("No Go books yet.\nPut prepared .epub files in:\n") .. Booklist.DEFAULT_DIR })
+        self:showHome()
         return
     end
     local Menu = require("ui/widget/menu")
@@ -152,7 +156,7 @@ function GOReader:showBookList()
             UIManager:close(menu)
             self:openBook(item.path)
         end,
-        close_callback = function() UIManager:close(menu) end,
+        close_callback = function() UIManager:close(menu); self:showHome() end,
     }
     UIManager:show(menu)
 end
@@ -161,52 +165,55 @@ end
 -- Menu
 -- ---------------------------------------------------------------------------
 
+-- ---------------------------------------------------------------------------
+-- The home window: where leaving any game or list brings you back to
+-- ---------------------------------------------------------------------------
+
+function GOReader:_apps()
+    if not self.apps then
+        local home = function() self:showHome() end
+        self.apps = {
+            dgs = require("goreader.app.dgs_app").new{ home = home },
+            ogs = require("goreader.app.ogs_app").new{ home = home },
+            review = require("goreader.app.review_app").new{ home = home },
+        }
+    end
+    return self.apps
+end
+
+function GOReader:showHome()
+    if self.home_menu then UIManager:close(self.home_menu); self.home_menu = nil end
+    local Menu = require("ui/widget/menu")
+    local apps = self:_apps()
+    local function run(what, fn) return function() UIManager:close(self.home_menu); self.home_menu = nil; Env.safe(what, fn) end end
+    local items = {
+        { text = "Saved games (review)", mandatory = "SGF", callback = run("saved games", function() apps.review:open_library() end) },
+        { text = "Dragon Go Server", mandatory = "your games", callback = run("dragon go server", function() apps.dgs:open() end) },
+        { text = "Watch OGS games", mandatory = "live", callback = run("ogs", function() apps.ogs:choose_filter() end) },
+        { text = "Go books", mandatory = "interactive", callback = run("books", function() self:showBookList() end) },
+        { text = "OGS chat room", mandatory = "read only", callback = run("ogs chat", function() apps.ogs:listen_room() end) },
+        { text = "OGS connection test", mandatory = "", callback = run("ogs test", function() apps.ogs:connection_test() end) },
+    }
+    local menu
+    menu = Menu:new{
+        title = _("GOReader"), item_table = items,
+        covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = false,
+        items_per_page = 8,
+        onMenuSelect = function(_, item) item.callback() end,
+        close_callback = function() UIManager:close(menu); self.home_menu = nil end,
+    }
+    self.home_menu = menu
+    UIManager:show(menu)
+    UIManager:setDirty(nil, "full")
+end
+
+function GOReader:onOpenGOReader() self:showHome(); return true end
+
 function GOReader:addToMainMenu(menu_items)
-    local dgs_app, ogs_app, review_app
-    local function dgs_menu()
-        dgs_app = dgs_app or require("goreader.app.dgs_app").new()
-        return dgs_app:menu_items()
-    end
-    local function ogs_menu()
-        ogs_app = ogs_app or require("goreader.app.ogs_app").new()
-        return ogs_app:menu_items()
-    end
     menu_items.goreader = {
         text = _("GOReader"),
         sorting_hint = "main",
-        sub_item_table = {
-            {
-                text = _("Go books"),
-                callback = function() self:showBookList() end,
-            },
-            {
-                text = _("Saved games (review)"),
-                callback = function()
-                    review_app = review_app or require("goreader.app.review_app").new()
-                    Env.safe("saved games", function() review_app:open_library() end)
-                end,
-            },
-            {
-                text = _("Dragon Go Server"),
-                sub_item_table_func = function() return dgs_menu().sub_item_table end,
-            },
-            {
-                text = _("OGS (test)"),
-                sub_item_table_func = function() return ogs_menu().sub_item_table end,
-            },
-            {
-                text = _("About this book"),
-                enabled_func = function() return self.ui.document ~= nil end,
-                callback = function()
-                    local doc = self.ui.document
-                    local prepared = doc and self:_side_text("ch1") ~= nil
-                    UIManager:show(InfoMessage:new{
-                        text = prepared and _("This is a prepared Go book: tap a diagram to play it.")
-                                         or _("Not a prepared Go book (no interactive diagrams found)."),
-                    })
-                end,
-            },
-        },
+        callback = function() self:showHome() end,
     }
 end
 
