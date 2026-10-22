@@ -58,7 +58,8 @@ function GameScreen.layout(sw, sh, st, dp)
     -- The board is as wide as the screen allows but never so tall that the
     -- confirmation dialog (or the status line and button row) would not fit
     -- below it. It keeps the same size in both modes so it never jumps.
-    local reserve = confirm_h + dp(8)
+    local status_h = dp(34)
+    local reserve = math.max(confirm_h, rows_h + status_h) + dp(8)
     local avail = sh - y - reserve
     local board_w = math.min(sw - 2 * pad, avail)
     local lay = BoardView.layout(board_w, (st.board and st.board.size) or 19, { coords = true })
@@ -71,7 +72,7 @@ function GameScreen.layout(sw, sh, st, dp)
         r.confirm.buttons = { x = r.confirm.x, y = y + dp(60), w = r.confirm.w, h = dp(82) }
         y = y + r.confirm.h
     else
-        r.status = { x = pad, y = y, w = sw - 2 * pad, h = dp(34) }
+        r.status = { x = pad, y = y, w = sw - 2 * pad, h = status_h }
         y = y + r.status.h
     end
     -- button rows hug the bottom edge
@@ -141,20 +142,28 @@ function GameScreen:_paint_header(bb, x, y, st, h)
     self._rects.menu = nil
 end
 
-function GameScreen:_paint_player(bb, x, y, w, h, p, color, active)
+function GameScreen:_paint_player(bb, x, y, w, h, p, color, active, fill)
     local px = math.floor(h * 0.38)
-    stone_icon(bb, x + h * 0.45, y + h / 2, math.floor(h * 0.26), color)
+    local ink = Kit.BLACK
+    if fill and active then                      -- the side to move is shown as a solid block
+        Kit.fill(bb, x, y, w, h, Kit.BLACK)
+        ink = Kit.WHITE
+        bb:paintCircle(math.floor(x + h * 0.45), math.floor(y + h / 2), math.floor(h * 0.26), Kit.WHITE)
+        if color == "B" then bb:paintCircle(math.floor(x + h * 0.45), math.floor(y + h / 2), math.floor(h * 0.26) - 3, Kit.BLACK) end
+    else
+        stone_icon(bb, x + h * 0.45, y + h / 2, math.floor(h * 0.26), color)
+    end
     local name = (p and p.name or "") .. ((p and p.rank and p.rank ~= "") and (" (" .. p.rank .. ")") or "")
     local clock = p and p.clock and p.clock ~= "" and p.clock or nil
     local right = x + w - Kit.dp(8)
     local extra = ""
     if p and p.captures and p.captures > 0 then extra = "  ×" .. p.captures end
     if clock then
-        Kit.text_right(bb, right, y + h / 2, clock, px, Kit.BLACK, active)
+        Kit.text_right(bb, right, y + h / 2, clock, px, ink, active)
         right = right - Kit.text_width(bb, clock, px, active) - Kit.dp(10)
     end
-    Kit.text_left(bb, x + h * 0.85, y + h / 2, name .. extra, px, Kit.BLACK, active, right - (x + h * 0.85))
-    if active then Kit.fill(bb, x + Kit.dp(4), y + h - 5, w - Kit.dp(8), 4, Kit.BLACK) end
+    Kit.text_left(bb, x + h * 0.85, y + h / 2, name .. extra, px, ink, active, right - (x + h * 0.85))
+    if active and not fill then Kit.fill(bb, x + Kit.dp(4), y + h - 5, w - Kit.dp(8), 4, Kit.BLACK) end
 end
 
 function GameScreen:paintTo(bb, x, y)
@@ -165,8 +174,8 @@ function GameScreen:paintTo(bb, x, y)
     self:_paint_header(bb, x, y + lay.header.y, st, lay.header.h)
 
     local half = math.floor(self.sw / 2)
-    self:_paint_player(bb, x, y + lay.players.y, half, lay.players.h, st.black, "B", st.to_move == "B")
-    self:_paint_player(bb, x + half, y + lay.players.y, half, lay.players.h, st.white, "W", st.to_move == "W")
+    self:_paint_player(bb, x, y + lay.players.y, half, lay.players.h, st.black, "B", st.to_move == "B", st.turn_fill)
+    self:_paint_player(bb, x + half, y + lay.players.y, half, lay.players.h, st.white, "W", st.to_move == "W", st.turn_fill)
     Kit.fill(bb, x, y + lay.players.y + lay.players.h - 1, self.sw, 1, Kit.LIGHT)
 
     BoardView.paint(bb, x + lay.board.x, y + lay.board.y, lay.board.lay, st.board, { show_numbers = st.show_numbers })
