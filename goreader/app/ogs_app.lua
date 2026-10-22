@@ -42,7 +42,7 @@ function App:connection_test()
             local verdict
             if ok then
                 local games
-                s.ogs:list_games("live", { hide_19x19 = true }, 0, 5, function(r) games = r end)
+                s.ogs:list_games("live", {}, 0, 5, function(r) games = r end)
                 for _ = 1, 30 do s:pump(); if games then break end; require("socket").sleep(0.1) end
                 s.steps[#s.steps + 1] = { name = "ask for the live game list", ok = games ~= nil, ms = 0,
                                           info = games and (#games .. " games listed") or "no answer" }
@@ -66,7 +66,7 @@ local function player_text(p)
     return (p.username or "?") .. " (" .. OGSGame.rank_text(p.rank) .. ")"
 end
 
-function App:show_game_list(session, games, size_label)
+function App:show_game_list(session, games, size_label, filter_index, page, total)
     local Menu = require("ui/widget/menu")
     local items = {}
     for _, g in ipairs(games) do
@@ -76,12 +76,24 @@ function App:show_game_list(session, games, size_label)
             game = g,
         }
     end
+    local f = FILTERS[filter_index or 1]
+    local more_available = (f.order == "weak") and (App.page_start(f, total, (page or 0) + 1) < App.page_start(f, total, page or 0))
+                           or (f.order ~= "weak" and #games >= App.PAGE)
+    if more_available then
+        items[#items + 1] = { text = "More games ▸", mandatory = "", more = true }
+    end
+    if (page or 0) > 0 then
+        table.insert(items, 1, { text = "◂ Previous games", mandatory = "", previous = true })
+    end
     local menu
     menu = Menu:new{
-        title = "Live games (" .. size_label .. ")", item_table = items,
+        title = "Live games (" .. size_label .. ")" .. ((page or 0) > 0 and ("  ·  page " .. ((page or 0) + 1)) or ""),
+        item_table = items, items_per_page = 12,
         covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = true,
         onMenuSelect = function(_, item)
             UIManager:close(menu)
+            if item.more then return Env.safe("games", function() self:watch_live(filter_index, (page or 0) + 1) end) end
+            if item.previous then return Env.safe("games", function() self:watch_live(filter_index, (page or 0) - 1) end) end
             self:watch(session, item.game)
         end,
         close_callback = function() UIManager:close(menu) end,
@@ -100,30 +112,67 @@ function App:watch(session, game)
     UIManager:setDirty(nil, "full")
 end
 
+-- Which games to list. OGS sorts by rank, strongest first; "weakest first" asks
+-- for the other end of the list, where the kyu games are.
+local ONLY_19 = { hide_9x9 = true, hide_13x13 = true, hide_other = true }
 local FILTERS = {
+    { label = "19x19, strongest first", where = ONLY_19 },
+    { label = "19x19, weakest first (kyu games)", where = ONLY_19, order = "weak" },
+    { label = "19x19, no bot games", where = { hide_9x9 = true, hide_13x13 = true, hide_other = true, hide_bot_games = true } },
     { label = "9x9 and 13x13", where = { hide_19x19 = true, hide_other = true } },
     { label = "all sizes", where = {} },
-    { label = "no bot games", where = { hide_bot_games = true, hide_19x19 = true } },
 }
+App.FILTERS = FILTERS
+App.PAGE = 40
 
-function App:watch_live(filter_index)
+--[[ Where the next page of a list starts. `total` is how many games match
+     (known after the first query); `page` counts from 0. Weakest-first pages
+     walk backwards from the end of the list. ]]
+function App.page_start(filter, total, page)
+    page = page or 0
+    if filter.order == "weak" then
+        return math.max(0, (total or App.PAGE) - App.PAGE * (page + 1))
+    end
+    return App.PAGE * page
+end
+
+function App:watch_live(filter_index, page)
     local f = FILTERS[filter_index or 1]
+    page = page or 0
     self:with_session(function(session, why, failed)
         if not session then
             Env.show_text("OGS", "Could not connect: " .. tostring(why) .. (failed and ("\n\n" .. failed:report()) or ""))
             return
         end
-        local results, err
-        local done = false
-        session.ogs:list_games("live", f.where, 0, 40, function(r, e) results, err = r, e; done = true end)
-        for _ = 1, 100 do
-            session:pump()
-            if done then break end
-            require("socket").sleep(0.1)
+        local function ask(from, limit)
+            local results, err, data
+            local done = false
+            session.ogs:list_games("live", f.where, from, limit, function(r, e, d) results, err, data, done = r, e, d, true end)
+            for _ = 1, 100 do
+                session:pump()
+                if done then break end
+                require("socket").sleep(0.1)
+            end
+            return results, err, data
         end
+        local total
+        if f.order == "weak" or page > 0 then
+            local _, err, data = ask(0, 1)                       -- just to learn how many games match
+            total = data and data.size
+            if not total then Env.info("Could not get the game list: " .. tostring(err and (err.message or err.code) or "no answer")); return end
+        end
+        local from = App.page_start(f, total, page)
+        local limit = App.PAGE
+        if f.order == "weak" and total and total < App.PAGE * (page + 1) then limit = math.max(1, total - App.PAGE * page) end
+        local results, err = ask(from, limit)
         if not results then Env.info("Could not get the game list: " .. tostring(err and (err.message or err.code) or "no answer")); return end
         if #results == 0 then Env.info("No live games match (" .. f.label .. ")."); return end
-        self:show_game_list(session, results, f.label)
+        if f.order == "weak" then                               -- show the weakest players' games first
+            local rev = {}
+            for i = #results, 1, -1 do rev[#rev + 1] = results[i] end
+            results = rev
+        end
+        self:show_game_list(session, results, f.label, filter_index, page, total)
     end)
 end
 
