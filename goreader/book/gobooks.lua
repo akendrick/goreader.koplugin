@@ -193,6 +193,7 @@ function Gobooks.parse_figure(xml)
     local cap = xml:match("<figcaption[^>]*>(.-)</figcaption>")
     if cap then spec.caption = decode_entities(cap:gsub("<[^>]*>", ""):match("^%s*(.-)%s*$")) end
     spec.size_class = xml:match('<div class="fig%s+(%S+)')
+    spec.div_class = xml:match('<div class="([^"]*)"')          -- e.g. "fig c10 center"
 
     -- everything after <defs>/<style>, walking tags in order
     local body = svg:gsub("<defs>.-</defs>", ""):gsub("<style[^>]*>.-</style>", "")
