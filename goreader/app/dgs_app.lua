@@ -14,6 +14,7 @@ local SGF        = require("goreader.core.sgf")
 local ReviewModel = require("goreader.ui.review_model")
 local ReviewController = require("goreader.ui.review_controller")
 local Storage    = require("goreader.services.storage")
+local PlayOut    = require("goreader.ui.playout_controller")
 
 local App = {}
 App.__index = App
@@ -200,6 +201,7 @@ function App:open_game(client, row)
                 return { sgf = new_sgf, move_id = move_id, my_color = row.my_color }
             end,
             schedule = function(fn) UIManager:scheduleIn(0.15, function() Env.safe("dragon go server", fn) end) end,
+            play_out = function(c) Env.safe("play out", function() self:play_out(c, row) end) end,
         }
         local screen
         ctl.on_change = function() if screen then screen:update() end end
@@ -207,6 +209,42 @@ function App:open_game(client, row)
         UIManager:show(screen)
         UIManager:setDirty(nil, "full")
     end)
+end
+
+--[[ PLAY OUT: a temporary board started from this position (with the move you
+     chose already played) for trying variations, notes and saving a new SGF.
+     Nothing is sent to Dragon Go Server. Closing it returns to the choices. ]]
+function App:play_out(dgs_ctl, row)
+    local game = dgs_ctl.game
+    local staged = game:staged()
+    local lfs = require("libs/libkoreader-lfs")
+    local storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+    local TreeView = require("goreader.ui.treeview")
+    local po
+    po = PlayOut.new{
+        sgf = SGF.write(game.model.game),
+        title = (row.opponent or "game") .. "  ·  play out",
+        stage = staged and (staged.pass and { pass = true } or { col = staged.col, row = staged.row }) or nil,
+        edit_note = function(initial, cb)
+            Env.text_dialog("Note for move " .. po.model:state().move_number, initial, "Save note", cb, true)
+        end,
+        ask_name = function(default, cb) Env.text_dialog("Save as a new SGF: name", default, "Save", cb, false) end,
+        save_new = function(name, text)
+            storage:ensure()
+            return storage:save_game(text, name)                  -- always a new file, never an overwrite
+        end,
+        show_tree = function(model, done) UIManager:show(TreeView:new{ model = model, on_close = done }) end,
+        confirm_leave = function(cb)
+            Env.choice_dialog("Leave the play-out?\nYour variations are not saved.", {
+                { "keep", "Keep playing" }, { "save", "Save as a new SGF…" }, { "discard", "Discard and go back" } }, cb)
+        end,
+    }
+    local screen
+    screen = GameScreen:new{ controller = po, on_close = function() dgs_ctl.on_change() end }
+    po.on_change = function() screen:update() end
+    po.close = function() screen:close() end
+    UIManager:show(screen)
+    UIManager:setDirty(nil, "full")
 end
 
 -- A game that is not waiting on you: replay it (opens on the latest move, or move 40 if it is finished)

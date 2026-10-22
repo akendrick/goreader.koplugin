@@ -89,6 +89,36 @@ function Env.show_text(title, text, on_close)
     end
 end
 
+--[[ A text box with Cancel / OK. cb(text) on OK, cb(nil) on cancel.
+     multiline = true allows new lines (notes). ]]
+function Env.text_dialog(title, initial, ok_label, cb, multiline)
+    local InputDialog = require("ui/widget/inputdialog")
+    local dlg
+    dlg = InputDialog:new{
+        title = title, input = initial or "", input_type = "text", allow_newline = multiline and true or false,
+        buttons = {{
+            { text = "Cancel", callback = function() UIManager:close(dlg); cb(nil) end },
+            { text = ok_label or "OK", is_enter_default = not multiline, callback = function()
+                local t = dlg:getInputText() or ""
+                UIManager:close(dlg); cb(t) end },
+        }},
+    }
+    UIManager:show(dlg)
+    dlg:onShowKeyboard()
+end
+
+-- A dialog with one button per choice: choices = { {id, label}, ... }; cb(id)
+function Env.choice_dialog(title, choices, cb)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog
+    local buttons = {}
+    for _, c in ipairs(choices) do
+        buttons[#buttons + 1] = { { text = c[2], callback = function() UIManager:close(dialog); cb(c[1]) end } }
+    end
+    dialog = ButtonDialog:new{ title = title, buttons = buttons }
+    UIManager:show(dialog)
+end
+
 function Env.info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end
