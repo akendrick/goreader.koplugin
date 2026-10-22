@@ -9,6 +9,13 @@
 local json = {}
 json.null = setmetatable({}, { __tostring = function() return "null" end })
 
+--[[ An empty Lua table could be an empty list or an empty object; the encoder
+     picks "[]". Wrap a table with json.object() to force "{}" (servers that
+     expect an object reject a list). ]]
+function json.object(t)
+    return setmetatable(t or {}, { __json_object = true })
+end
+
 -- ---------------------------------------------------------------------------
 -- Decode
 -- ---------------------------------------------------------------------------
@@ -171,7 +178,8 @@ local function enc(v, out)
                         or string.format("%.14g", v)
     elseif t == "string" then out[#out + 1] = esc(v)
     elseif t == "table" then
-        if is_array(v) then
+        local mt = getmetatable(v)
+        if is_array(v) and not (mt and mt.__json_object) then
             out[#out + 1] = "["
             for i = 1, #v do
                 if i > 1 then out[#out + 1] = "," end

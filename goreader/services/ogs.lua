@@ -306,8 +306,10 @@ end
 --[[ list = "live" | "corr"; where = filters (see OGS_RESEARCH.md); cb(results, err) ]]
 function OGS:list_games(list, where, from, limit, cb)
     limit = math.max(1, math.min(limit or 20, 300))
+    where = where or {}
+    if next(where) == nil then where = json.object({}) end          -- "{}" not "[]"
     return self:send("gamelist/query", {
-        list = list or "live", sort_by = "rank", where = where or {},
+        list = list or "live", sort_by = "rank", where = where,
         from = from or 0, limit = limit,
     }, function(data, err)
         if not data then return cb(nil, err) end

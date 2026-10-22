@@ -41,11 +41,15 @@ function App:connection_test()
             local ok, why = s:open()
             local verdict
             if ok then
-                local games
-                s.ogs:list_games("live", {}, 0, 5, function(r) games = r end)
-                for _ = 1, 30 do s:pump(); if games then break end; require("socket").sleep(0.1) end
-                s.steps[#s.steps + 1] = { name = "ask for the live game list", ok = games ~= nil, ms = 0,
-                                          info = games and (#games .. " games listed") or "no answer" }
+                local games, gerr
+                local t0 = require("socket").gettime()
+                s.ogs:list_games("live", { hide_9x9 = true, hide_13x13 = true, hide_other = true }, 0, 5,
+                    function(r, e) games, gerr = r, e end)
+                for _ = 1, 60 do s:pump(); if games or gerr then break end; require("socket").sleep(0.1) end
+                s.steps[#s.steps + 1] = { name = "ask for 19x19 live games", ok = games ~= nil,
+                    ms = math.floor((require("socket").gettime() - t0) * 1000),
+                    info = games and (#games .. " games listed")
+                        or (gerr and ("the server said: " .. tostring(gerr.message or gerr.code)) or "no answer") }
                 verdict = "All good: OGS can be reached from this device."
                 self.session = s
             else
@@ -136,6 +140,23 @@ function App.page_start(filter, total, page)
     return App.PAGE * page
 end
 
+--[[ Filter a list of games on the device, used when the server refuses our
+     filter: keeps the board sizes and bot setting of `where`. ]]
+function App.local_filter(games, where)
+    local out = {}
+    for _, g in ipairs(games) do
+        local w = g.width
+        local keep = true
+        if where.hide_19x19 and w == 19 then keep = false end
+        if where.hide_13x13 and w == 13 then keep = false end
+        if where.hide_9x9 and w == 9 then keep = false end
+        if where.hide_other and w ~= 9 and w ~= 13 and w ~= 19 then keep = false end
+        if where.hide_bot_games and g.bot_game then keep = false end
+        if keep then out[#out + 1] = g end
+    end
+    return out
+end
+
 function App:watch_live(filter_index, page)
     local f = FILTERS[filter_index or 1]
     page = page or 0
@@ -165,7 +186,23 @@ function App:watch_live(filter_index, page)
         local limit = App.PAGE
         if f.order == "weak" and total and total < App.PAGE * (page + 1) then limit = math.max(1, total - App.PAGE * page) end
         local results, err = ask(from, limit)
-        if not results then Env.info("Could not get the game list: " .. tostring(err and (err.message or err.code) or "no answer")); return end
+        if not results then
+            -- The server may not like our filter: ask for everything and filter here
+            Env.log("warn", "OGS game list failed (" .. tostring(err and (err.message or err.code) or "no answer") .. "), retrying without a filter")
+            local all, err2 = ask(0, 300)
+            if not all then
+                Env.info("Could not get the game list.\n" .. tostring(err and (err.message or err.code) or "no answer")
+                    .. "\n(and without a filter: " .. tostring(err2 and (err2.message or err2.code) or "no answer") .. ")")
+                return
+            end
+            results = App.local_filter(all, f.where)
+            if f.order ~= "weak" then
+                local trimmed = {}
+                for i = from + 1, math.min(#results, from + limit) do trimmed[#trimmed + 1] = results[i] end
+                results = trimmed
+            end
+            total = total or #results
+        end
         if #results == 0 then Env.info("No live games match (" .. f.label .. ")."); return end
         if f.order == "weak" then                               -- show the weakest players' games first
             local rev = {}
