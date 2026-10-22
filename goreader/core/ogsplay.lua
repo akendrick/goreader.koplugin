@@ -137,8 +137,30 @@ function Play:_handle(event, data)
     elseif event == "chat/remove" then
         self.chat:remove_ids((data or {}).chat_ids)
     elseif event == "removed_stones" then
-        if type(data) == "table" and data.all_removed then self.game:set_removed(data.all_removed) end
+        if type(data) == "table" then
+            if data.all_removed then
+                self.game:set_removed(data.all_removed)
+            elseif type(data.stones) == "string" then            -- only the change was sent
+                local OGS = require("goreader.services.ogs")
+                local now = {}
+                for _, p in ipairs(self.game.removed or {}) do now[p[1] .. "," .. p[2]] = p end
+                for _, p in ipairs(OGS.unpack_stones(data.stones)) do
+                    now[p[1] .. "," .. p[2]] = data.removed and p or nil
+                end
+                local list = {}
+                for _, p in pairs(now) do list[#list + 1] = p end
+                self.game:set_removed(list)
+            end
+        end
         self:emit("removed_stones")
+    elseif event == "removed_stones_accepted" then
+        -- both players accepted the count: the game is over
+        if type(data) == "table" then
+            self.game:set_outcome(data)
+            self.game:set_phase(data.phase or "finished")
+            self.staged = nil
+            self:emit("phase", { phase = self.game.phase })
+        end
     elseif event == "undo_requested" then
         self.undo_request = type(data) == "table" and data or { move_number = data }
         self:emit("undo_requested", self.undo_request)

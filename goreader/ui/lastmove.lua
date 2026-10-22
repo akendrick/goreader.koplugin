@@ -13,4 +13,7 @@ function Last.text(last, size, move_number)
     return t
 end
 
+-- "R17": a point in the usual Go notation
+function Last.name(col, row, size) return GTP.vertex(col, row, size) end
+
 return Last

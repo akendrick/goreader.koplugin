@@ -93,16 +93,31 @@ function Auth.sign_in(opts)
 
     res, code, detail = self:request("POST", "/api/v0/login", { username = username, password = password })
     if not res then return nil, code, detail end
-    if res.code == 400 or res.code == 401 or res.code == 403 then return nil, "bad_credentials" end
+    local reply = parse(res)
+    if res.code == 400 or res.code == 401 or res.code == 403 then
+        if reply and reply.error_code == "banned" then return nil, "banned" end
+        local msg = reply and reply.error
+        if type(msg) == "table" then msg = table.concat(msg, " ") end
+        msg = tostring(msg or "")
+        if msg == "" or msg:lower():find("password", 1, true) or msg:lower():find("username", 1, true) then
+            return nil, "bad_credentials"
+        end
+        return nil, "refused", msg
+    end
     if res.code ~= 200 and res.code ~= 201 and res.code ~= 302 then return nil, "http_" .. tostring(res.code) end
+    if reply and reply.redirect then return nil, "sso" end         -- the account signs in through Google, Facebook, ...
 
-    res, code, detail = self:request("GET", "/api/v1/ui/config")
-    if not res then return nil, code, detail end
-    if res.code ~= 200 then return nil, "http_" .. tostring(res.code) end
-    local cfg = parse(res)
-    if not cfg then return nil, "bad_json" end
-    local jwt, user = token_from(cfg)
-    if not jwt then return nil, "bad_credentials" end            -- the site did not accept the sign-in
+    -- the answer is the signed-in page config; if it is not, ask for the config again
+    local jwt, user = token_from(reply)
+    if not jwt then
+        res, code, detail = self:request("GET", "/api/v1/ui/config")
+        if not res then return nil, code, detail end
+        if res.code ~= 200 then return nil, "http_" .. tostring(res.code) end
+        local cfg = parse(res)
+        if not cfg then return nil, "bad_json" end
+        jwt, user = token_from(cfg)
+        if not jwt then return nil, "bad_credentials" end            -- the site did not accept the sign-in
+    end
     self.jwt, self.user = jwt, user
     return self
 end
@@ -115,14 +130,23 @@ function Auth.parse_overview(data, my_id)
         if type(g) == "table" and g.id then
             local j = type(g.json) == "table" and g.json or {}
             local clock = type(j.clock) == "table" and j.clock or {}
-            local black = type(g.black) == "table" and g.black or {}
-            local white = type(g.white) == "table" and g.white or {}
+            -- the record has changed shape over time: players can be objects, or ids with the objects under `players`
+            local function player(color)
+                local p = g[color]
+                if type(p) == "table" then return p end
+                local in_players = type(g.players) == "table" and g.players[color]
+                if type(in_players) == "table" then return in_players end
+                local in_json = type(j.players) == "table" and j.players[color]
+                if type(in_json) == "table" then return in_json end
+                return { id = type(p) == "number" and p or nil }
+            end
+            local black, white = player("black"), player("white")
             local mine
             if clock.current_player ~= nil and my_id ~= nil then mine = (clock.current_player == my_id) end
             out[#out + 1] = {
                 id = g.id, width = g.width or j.width, height = g.height or j.height,
-                black = { id = black.id, username = black.username, rank = black.ranking },
-                white = { id = white.id, username = white.username, rank = white.ranking },
+                black = { id = black.id, username = black.username, rank = black.ranking or black.rank },
+                white = { id = white.id, username = white.username, rank = white.ranking or white.rank },
                 my_turn = mine == true, move_count = type(j.moves) == "table" and #j.moves or nil,
                 speed = (type(j.time_control) == "table" and j.time_control.speed) or g.speed,
                 name = g.name or j.game_name,

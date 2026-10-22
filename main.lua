@@ -300,6 +300,7 @@ function GOReader:_apps()
             ogs = require("goreader.app.ogs_app").new{ home = home },
             review = require("goreader.app.review_app").new{ home = home },
             sgf = require("goreader.app.sgf_app").new{ home = home },
+            ogsplay = require("goreader.app.ogs_play_app").new{ home = home },
         }
     end
     return self.apps
@@ -312,6 +313,7 @@ function GOReader:_entries()
         { text = "SGF Game", mandatory = "record / play", what = "sgf game", run = function() apps.sgf:open() end },
         { text = "Saved games (review)", mandatory = "SGF", what = "saved games", run = function() apps.review:open_library() end },
         { text = "Dragon Go Server", mandatory = "your games", what = "dragon go server", run = function() apps.dgs:open() end },
+        { text = "Play on OGS", mandatory = "your account", what = "play on ogs", run = function() apps.ogsplay:open() end },
         { text = "Watch OGS games", mandatory = "live", what = "ogs", run = function() apps.ogs:choose_filter() end },
         { text = "Go books", mandatory = "interactive", what = "books", run = function() self:showBookList() end },
         { text = "OGS chat room", mandatory = "read only", what = "ogs chat", run = function() apps.ogs:listen_room() end },
