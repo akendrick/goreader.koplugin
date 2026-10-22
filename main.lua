@@ -162,7 +162,7 @@ end
 -- ---------------------------------------------------------------------------
 
 function GOReader:addToMainMenu(menu_items)
-    local dgs_app, ogs_app
+    local dgs_app, ogs_app, review_app
     local function dgs_menu()
         dgs_app = dgs_app or require("goreader.app.dgs_app").new()
         return dgs_app:menu_items()
@@ -178,6 +178,13 @@ function GOReader:addToMainMenu(menu_items)
             {
                 text = _("Go books"),
                 callback = function() self:showBookList() end,
+            },
+            {
+                text = _("Saved games (review)"),
+                callback = function()
+                    review_app = review_app or require("goreader.app.review_app").new()
+                    Env.safe("saved games", function() review_app:open_library() end)
+                end,
             },
             {
                 text = _("Dragon Go Server"),
