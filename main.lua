@@ -32,6 +32,81 @@ function GOReader:init()
             category = "none", event = "OpenGOReaderBooks", title = _("Open Go books"), general = true })
     end
     if self.ui.document and self.ui.link then self:_hook_links() end
+    if self:_is_go_book() then
+        self:_register_exit_zone()
+    elseif not self.ui.document then
+        self:_run_pending()
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Leaving a Go book: tap the top-right corner
+-- ---------------------------------------------------------------------------
+
+-- Prepared Go books carry "(GOReader)" in their name
+function GOReader:_is_go_book()
+    local doc = self.ui and self.ui.document
+    return doc and type(doc.file) == "string" and doc.file:find("(GOReader)", 1, true) ~= nil or false
+end
+
+local EXIT_OVERRIDES = {
+    "tap_top_left_corner", "tap_top_right_corner", "tap_left_bottom_corner", "tap_right_bottom_corner",
+    "readerfooter_tap", "readerconfigmenu_ext_tap", "readerconfigmenu_tap", "readermenu_ext_tap", "readermenu_tap",
+    "tap_forward", "tap_backward",
+}
+
+function GOReader:_register_exit_zone()
+    if not self.ui.registerTouchZones then return end
+    self.ui:registerTouchZones({ {
+        id = "goreader_exit_corner", ges = "tap",
+        screen_zone = { ratio_x = 0.84, ratio_y = 0, ratio_w = 0.16, ratio_h = 0.07 },
+        overrides = EXIT_OVERRIDES,
+        handler = function() self:showExitDialog(); return true end,
+    } })
+end
+
+function GOReader:showExitDialog()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog
+    local function choose(what)
+        return function()
+            UIManager:close(dialog)
+            self:leaveBook(what)
+        end
+    end
+    dialog = ButtonDialog:new{
+        title = _("Go book"),
+        buttons = {
+            { { text = _("Close book, back to the Go books list"), callback = choose("books") } },
+            { { text = _("Close book, back to GOReader"), callback = choose("home") } },
+            { { text = _("Exit KOReader"), callback = choose("quit") } },
+            { { text = _("Keep reading"), callback = choose(nil) } },
+        },
+    }
+    UIManager:show(dialog)
+    return dialog
+end
+
+-- Closing the book destroys this plugin instance; the choice is carried to the
+-- next one (created with the file manager) in the Env module.
+function GOReader:leaveBook(what)
+    if not what then return end
+    if what == "quit" then
+        local Event = require("ui/event")
+        UIManager:broadcastEvent(Event:new("Exit"))
+        return
+    end
+    Env.pending = what
+    if self.ui.onHome then self.ui:onHome() else self.ui:onClose() end
+end
+
+function GOReader:_run_pending()
+    local what = Env.pending
+    if not what then return end
+    Env.pending = nil
+    UIManager:scheduleIn(0.4, function()
+        if what == "books" then self:showBookList() else self:showHome() end
+    end)
 end
 
 -- ---------------------------------------------------------------------------
@@ -128,18 +203,66 @@ function GOReader:onOpenGOReaderBooks()
     return true
 end
 
-function GOReader:showBookList()
+local LIBRARY_ROOT = "/mnt/onboard"
+local CACHE_FILE = Env.ROOT .. "/bookcache.json"
+
+local function load_cache()
+    local json = require("goreader.services.json")
+    local f = io.open(CACHE_FILE, "rb")
+    if not f then return {} end
+    local text = f:read("*a"); f:close()
+    local ok, t = pcall(json.decode, text)
+    return (ok and type(t) == "table") and t or {}
+end
+
+local function save_cache(cache)
+    local json = require("goreader.services.json")
+    local f = io.open(CACHE_FILE, "wb")
+    if f then f:write(json.encode(cache)); f:close() end
+end
+
+-- Interactive Go books anywhere in the library (found by what is inside them)
+function GOReader:_find_books()
     local lfs = require("libs/libkoreader-lfs")
-    local books, why = Booklist.scan(Booklist.DEFAULT_DIR, lfs)
-    if not books then
-        UIManager:show(InfoMessage:new{
-            text = _("No Go books folder found.\nPut prepared books in:\n") .. Booklist.DEFAULT_DIR })
-        self:showHome()
-        return
+    local LibraryBooks = require("goreader.book.library_books")
+    local Archiver = require("ffi/archiver")
+    local cache = load_cache()
+    local list = LibraryBooks.list{ root = LIBRARY_ROOT, books_dir = Booklist.DEFAULT_DIR, lfs = lfs, archiver = Archiver, cache = cache }
+    save_cache(cache)
+    return list
+end
+
+-- Open a book; an original is prepared first (a copy is written, the original is never changed)
+function GOReader:openBookEntry(book)
+    if book.prepared then return self:openBook(book.path) end
+    Env.with_progress(_("Preparing the book for interactive diagrams…\nThis happens once."), function()
+        local lfs = require("libs/libkoreader-lfs")
+        lfs.mkdir(Env.ROOT)
+        lfs.mkdir(Booklist.DEFAULT_DIR)
+        local stats, why = require("goreader.book.library_books").prepare(book.source, book.dst, require("ffi/archiver"))
+        if not stats then
+            UIManager:show(InfoMessage:new{ text = _("Could not prepare this book: ") .. tostring(why) })
+            return
+        end
+        self:openBook(book.dst)
+    end)
+end
+
+function GOReader:showBookList()
+    Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu() end)
+end
+
+function GOReader:_show_book_menu()
+    local ok, books = pcall(function() return self:_find_books() end)
+    if not ok or type(books) ~= "table" then
+        logger.warn("GOReader: library scan failed:", tostring(books))
+        -- fall back to the books folder alone
+        local lfs = require("libs/libkoreader-lfs")
+        books = Booklist.scan(Booklist.DEFAULT_DIR, lfs)
     end
-    if #books == 0 then
+    if not books or #books == 0 then
         UIManager:show(InfoMessage:new{
-            text = _("No Go books yet.\nPut prepared .epub files in:\n") .. Booklist.DEFAULT_DIR })
+            text = _("No interactive Go books found in the library.\nBooks from gobooks.com are recognised wherever they are stored.") })
         self:showHome()
         return
     end
@@ -154,7 +277,7 @@ function GOReader:showBookList()
         title_multilines = true,
         onMenuSelect = function(_, item)
             UIManager:close(menu)
-            self:openBook(item.path)
+            Env.safe("open book", function() self:openBookEntry(item.book or { prepared = true, path = item.path }) end)
         end,
         close_callback = function() UIManager:close(menu); self:showHome() end,
     }

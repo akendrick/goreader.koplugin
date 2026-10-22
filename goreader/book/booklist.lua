@@ -54,9 +54,9 @@ function Booklist.menu_items(books)
     local items = {}
     for _, b in ipairs(books) do
         items[#items + 1] = {
-            text = b.title .. (b.prepared and "" or "  (not prepared)"),
+            text = b.title .. (b.prepared and "" or (b.source and "  (prepares on first open)" or "  (not prepared)")),
             mandatory = Booklist.size_text(b.size),
-            path = b.path,
+            path = b.path, book = b,
         }
     end
     return items
