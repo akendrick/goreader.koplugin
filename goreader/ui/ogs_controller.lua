@@ -19,7 +19,10 @@ local Last    = require("goreader.ui.lastmove")
 local Controller = {}
 Controller.__index = Controller
 
-Controller.CLOCK_REDRAW_SECONDS = 10      -- e-ink: do not redraw every second just for a clock
+-- E-ink: the screen is redrawn when something HAPPENS (a move, the phase of the
+-- game, the clocks that come with a move), never on a timer. Chat only
+-- refreshes the strip, and at most this often.
+Controller.CHAT_REDRAW_SECONDS = 15
 Controller.RECONNECT_SECONDS = 8
 
 --[[ opts: session, game_id, title (optional), show_text(title, text), now() ]]
@@ -27,7 +30,7 @@ function Controller.new(opts)
     local self = setmetatable({
         session = assert(opts.session), game_id = assert(opts.game_id),
         title = opts.title, show_text = opts.show_text or function() end,
-        now = opts.now or os.time, dirty = true, last_draw = nil, last_reconnect = nil,
+        now = opts.now or os.time, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
         on_change = function() end, closed = false,
     }, Controller)
     self.play = Play.new{
@@ -38,9 +41,11 @@ function Controller.new(opts)
 end
 
 function Controller:_event(name)
-    if name == "loaded" or name == "move" or name == "phase" or name == "chat" or name == "error"
-       or name == "resync" or name == "clock" and false then
-        self.dirty = true
+    if name == "loaded" or name == "move" or name == "phase" or name == "clock"
+       or name == "error" or name == "resync" or name == "removed_stones" then
+        self.dirty = true                                  -- a move (and its clocks) changes the board now
+    elseif name == "chat" then
+        self.chat_dirty = true                             -- the chat strip can wait a little
     end
     if name == "error" then self.error_seen = true end
 end
@@ -151,8 +156,9 @@ end
 -- Keeping alive (called about once a second by the screen)
 -- ---------------------------------------------------------------------------
 
---[[ Returns true when the screen should redraw: something arrived, or the clock
-     is due (every CLOCK_REDRAW_SECONDS while the game is in play). ]]
+--[[ Returns true when the screen should redraw: a move, clocks or phase change
+     arrived, a reconnect happened, or new chat is due to be shown. There is no
+     clock-driven redraw. ]]
 function Controller:tick(now)
     if self.closed then return false end
     now = now or self.now()
@@ -166,11 +172,11 @@ function Controller:tick(now)
     else
         s:pump()
     end
-    local g = self.play.game
-    local clock_due = g.loaded and g.phase == "play"
-        and (not self.last_draw or now - self.last_draw >= Controller.CLOCK_REDRAW_SECONDS)
-    if self.dirty or clock_due then
-        self.dirty, self.last_draw = false, now
+    local chat_due = self.chat_dirty and (not self.last_chat_draw or now - self.last_chat_draw >= Controller.CHAT_REDRAW_SECONDS)
+    if self.dirty or chat_due then
+        if self.chat_dirty then self.last_chat_draw = now end      -- the strip is redrawn along with the board
+        self.dirty, self.chat_dirty = false, false
+        self.last_draw = now
         return true
     end
     return false
