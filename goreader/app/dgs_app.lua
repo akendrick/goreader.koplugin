@@ -205,12 +205,12 @@ function App:open_game(client, row)
     end)
 end
 
--- A game that is not waiting on you: replay it from the first move
+-- A game that is not waiting on you: replay it (opens on the latest move, or move 40 if it is finished)
 function App:open_replay(row, sgf)
     local game = SGF.parse(sgf)
     if not game then Env.info("This game could not be read."); return self:open() end
-    game:go_to_root()
     local model = ReviewModel.new{ game = game }
+    model:go_to_start_position()                  -- latest move, or move 40 for a finished game
     local lfs = require("libs/libkoreader-lfs")
     local storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
     local ctl = ReviewController.new{

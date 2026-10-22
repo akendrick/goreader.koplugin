@@ -113,8 +113,8 @@ function App:open_game(entry)
     if not text then Env.info("Could not read the file: " .. tostring(err)); return self:open_library() end
     local game = SGF.parse(text)
     if not game then Env.info("This file is not a readable SGF game."); return self:open_library() end
-    game:go_to_root()
     local model = ReviewModel.new{ game = game }
+    model:go_to_start_position()                  -- latest move, or move 40 for a finished game
     local ctl = Controller.new{
         model = model, title = entry.title,
         edit_note = function(initial, cb)

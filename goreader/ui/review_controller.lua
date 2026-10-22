@@ -82,13 +82,15 @@ function Controller:state()
     local row = {
         { id = "first", label = "|<", enabled = s.can_prev }, { id = "prev", label = "<", enabled = s.can_prev },
         { id = "next", label = ">", enabled = s.can_next }, { id = "last", label = ">|", enabled = s.can_next },
-        { id = "mistake", label = "Mistake", enabled = has_analysis },
-        { id = "cands", label = "Hints", enabled = has_analysis,
-          style = (has_analysis and m.show_candidates) and "toggle_on" or nil },
-        s.main_line and { id = "numbers", label = "Nums", style = self.show_numbers and "toggle_on" or nil }
-                     or { id = "mainline", label = "Main" },
-        { id = "note", label = "Note" },
+        { id = "ahead10", label = "+10", enabled = s.can_next },
     }
+    if has_analysis then                       -- engine tools only when the file has engine notes
+        row[#row + 1] = { id = "mistake", label = "Mistake" }
+        row[#row + 1] = { id = "cands", label = "Hints", style = m.show_candidates and "toggle_on" or nil }
+    end
+    row[#row + 1] = s.main_line and { id = "numbers", label = "Nums", style = self.show_numbers and "toggle_on" or nil }
+                                or { id = "mainline", label = "Main" }
+    row[#row + 1] = { id = "note", label = "Note" }
     if status == "" or status == nil then
         local lm = Last.text(s.last, s.size, s.move_number)
         status = lm and ("Last move: " .. lm) or ""
@@ -124,6 +126,7 @@ function Controller:button(id)
     elseif id == "prev" then m:prev()
     elseif id == "next" then m:next()
     elseif id == "last" then m:last()
+    elseif id == "ahead10" then m:next(10)
     elseif id == "mistake" then
         if not m:next_mistake() then
             if not m:prev_mistake() or true then self.message = "No more mistakes after this point." end

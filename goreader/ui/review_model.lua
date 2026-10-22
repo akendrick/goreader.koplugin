@@ -133,6 +133,20 @@ function Model:next(n)
     return moved
 end
 
+--[[ Where a game should open. A game still in progress opens on its latest
+     move; a finished game (it has a result) opens on an early-middle position,
+     move `opening` (default 40), so the board is full enough to be worth reading
+     without giving the ending away. Returns the move number shown. ]]
+Model.OPENING_MOVE = 40
+function Model:go_to_start_position(opening)
+    if self.game:result() ~= "" then
+        self:goto_move(math.min(opening or Model.OPENING_MOVE, self:total()))
+    else
+        self:last()
+    end
+    return self.game.current:move_number()
+end
+
 -- Jump to move number n along the current line (0 = before the first move)
 function Model:goto_move(n)
     n = math.max(0, math.floor(n))
