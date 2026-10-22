@@ -16,6 +16,7 @@
 local SGF      = require("goreader.core.sgf")
 local Analysis = require("goreader.core.analysis")
 local GTP      = require("goreader.engine.gtp")
+local Rules    = require("goreader.core.rules")
 
 local Model = {}
 Model.__index = Model
@@ -361,6 +362,54 @@ function Model:state()
         can_prev = node.parent ~= nil, can_next = node.children[1] ~= nil,
         dirty = self.dirty,
     }
+end
+
+-- ---------------------------------------------------------------------------
+-- Playing moves into the game (the play-out board)
+-- ---------------------------------------------------------------------------
+
+-- The rules engine set to the current position (setup stones, then the moves
+-- on the path from the start), for checking whether a move is legal.
+function Model:rules_here()
+    local g = self.game
+    local rules = Rules.new(g.board_size, { komi = g:komi(), superko = true })
+    local setup = g:setup_stones()
+    for _, key in ipairs({ "B", "W" }) do
+        for _, p in ipairs(setup[key]) do rules:setup_stone(key, p[1], p[2]) end
+    end
+    for _, m in ipairs(g:path_moves()) do
+        if m.col then rules:play(m.color, m.col, m.row) else rules:pass(m.color) end
+    end
+    return rules
+end
+
+--[[ Play a stone for the side to move. If that move already exists here the
+     game just goes to it. Returns node, created (true when a new node was
+     added), or nil + the rules' reason ("occupied", "suicide", "ko", ...). ]]
+function Model:play_move(col, row)
+    local g = self.game
+    local color = g:current_color()
+    local ok, why = self:rules_here():play(color, col, row)
+    if not ok then return nil, why end
+    local before = #g.current.children
+    local node = g:add_move(color, col, row)
+    local created = #node.parent.children > before
+    if created then self.dirty = true; self:refresh_analysis() end
+    return node, created
+end
+
+function Model:play_pass()
+    local g = self.game
+    local node = g:add_pass(g:current_color())
+    self.dirty = true; self:refresh_analysis()
+    return node, true
+end
+
+-- Take back the current move (it and anything after it) and step to its parent
+function Model:delete_current()
+    local ok = self.game:delete_current()
+    if ok then self.dirty = true; self:refresh_analysis() end
+    return ok
 end
 
 -- ---------------------------------------------------------------------------
