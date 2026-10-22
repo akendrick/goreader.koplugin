@@ -137,14 +137,17 @@ function App:open(up)
             local games, err = retrying(client, function() return client:running_games() end)
             if not games then Env.info("Could not load your games (" .. tostring(err) .. ")."); up(); return end
             if #games == 0 then Env.info("You have no running games on Dragon Go Server."); up(); return end
-            self:show_list(client, games, up)
+            local ok, err = pcall(function() self:show_grid(client, games, up) end)
+            if not ok then
+                Env.log("warn", "game grid failed: " .. tostring(err))
+                self:show_list(client, games, up)
+            end
         end)
     end)
 end
 
-function App:show_list(client, games, up)
-    up = up or function() self:go_home() end
-    local Menu = require("ui/widget/menu")
+-- Your games as rows: the game, your colour, whether it is your move, the opponent's name
+function App:build_rows(client, games)
     local rows, turn_count = {}, 0
     for _, g in ipairs(games) do
         local mine, opp = side_of(client, g)
@@ -159,6 +162,67 @@ function App:show_list(client, games, up)
         if a.my_turn ~= b.my_turn then return a.my_turn end
         return a.opponent:lower() < b.opponent:lower()
     end)
+    return rows, turn_count
+end
+
+-- The board of a downloaded game as it stands now: { size, board, last }, move number
+local function thumbnail(sgf)
+    local game = SGF.parse(sgf)
+    if not game then return nil end
+    local model = ReviewModel.new{ game = game }
+    model:last()
+    local st = model:state()
+    return { size = st.size, board = st.board, last = st.last }, st.move_number
+end
+App.thumbnail = thumbnail
+
+--[[ Download every running game (only those that changed since last time) and
+     show their boards, as they stand now, as a page of thumbnails. ]]
+function App:show_grid(client, games, up)
+    up = up or function() self:go_home() end
+    local GridScreen = require("goreader.ui.gridscreen")
+    local rows, turn_count = self:build_rows(client, games)
+    self.sgf_cache = self.sgf_cache or {}
+    local function build()
+        local items = {}
+        for _, row in ipairs(rows) do
+            local key = tostring(row.game.id) .. ":" .. tostring(row.game.move_id)
+            local sgf = self.sgf_cache[key]
+            if not sgf then
+                sgf = retrying(client, function() return client:download_sgf(row.game.id) end)
+                if sgf then self.sgf_cache[key] = sgf end
+            end
+            local board, number
+            if sgf then board, number = thumbnail(sgf) end
+            items[#items + 1] = {
+                id = row.game.id, row = row, mine = row.my_turn, board = board,
+                title = row.opponent,
+                subtitle = (row.my_turn and "Your move" or "Waiting") .. (number and ("  ·  move " .. number) or "  ·  could not load"),
+            }
+        end
+        return items
+    end
+    Env.with_progress(string.format("Downloading your %d games…", #rows), function()
+        local items = build()
+        local screen
+        screen = GridScreen:new{
+            title = string.format("Dragon Go Server  ·  %d to move", turn_count), items = items,
+            on_select = function(item)
+                Env.safe("open game", function() self:open_game(client, item.row, function() self:open(up) end) end)
+            end,
+            on_list = function() self:show_list(client, games, up) end,
+            on_reload = function() self.sgf_cache = {}; self:open(up) end,
+            on_close = up,
+        }
+        UIManager:show(screen)
+        UIManager:setDirty(nil, "full")
+    end)
+end
+
+function App:show_list(client, games, up)
+    up = up or function() self:go_home() end
+    local Menu = require("ui/widget/menu")
+    local rows, turn_count = self:build_rows(client, games)
     local menu
     menu = Menu:new{
         title = string.format("Dragon Go Server  ·  %d to move", turn_count), item_table = rows,
