@@ -391,6 +391,11 @@ end
 
 local function esc(s) return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")) end
 
+-- Labels (move numbers) are drawn at this fraction of the book's size: the book
+-- assumes narrow Helvetica; a standard sans-serif needs to be smaller to fit a stone.
+Gobooks.LABEL_SCALE = 0.8
+Gobooks.FONT_STACK = "Noto Sans, DejaVu Sans, Helvetica, Arial, sans-serif"
+
 function Gobooks.static_svg(spec, frame)
     local d = Diagram.new(spec)
     frame = frame or spec.frame0
@@ -408,9 +413,11 @@ function Gobooks.static_svg(spec, frame)
             out[#out + 1] = string.format('<rect x="%s" y="%s" width="%s" height="%s" fill="%s" stroke="%s" stroke-width="%s"/>',
                 fmt(o.x), fmt(o.y), fmt(o.w), fmt(o.h), o.fill or "none", o.stroke or "none", fmt(o.sw or 1))
         elseif o.op == "text" then
+            -- KOReader's SVG renderer ignores dy, so the baseline is placed explicitly
+            local size = (o.size or 16) * Gobooks.LABEL_SCALE
             out[#out + 1] = string.format(
-                '<text x="%s" y="%s" font-size="%s" font-family="Helvetica" fill="%s" text-anchor="middle" dy="%s">%s</text>',
-                fmt(o.x), fmt(o.y), fmt(o.size or 16), o.color or "black", fmt((o.size or 16) * 0.35), esc(o.text))
+                '<text x="%s" y="%s" font-size="%s" font-family="%s" fill="%s" text-anchor="middle">%s</text>',
+                fmt(o.x), fmt(o.y + size * 0.36), fmt(size), Gobooks.FONT_STACK, o.color or "black", esc(o.text))
         end
     end
     out[#out + 1] = "</svg>"

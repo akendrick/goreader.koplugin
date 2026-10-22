@@ -23,6 +23,11 @@ local GOReader = WidgetContainer:extend{
 function GOReader:init()
     self.side_cache = {}
     if self.ui.menu then self.ui.menu:registerToMainMenu(self) end
+    local ok, Dispatcher = pcall(require, "dispatcher")
+    if ok then                                  -- a gesture/shortcut action: "Open GOReader books"
+        Dispatcher:registerAction("goreader_books", {
+            category = "none", event = "OpenGOReaderBooks", title = _("Open Go books"), general = true })
+    end
     if self.ui.document and self.ui.link then self:_hook_links() end
 end
 
@@ -115,6 +120,11 @@ function GOReader:openBook(path)
     ReaderUI:showReader(path)
 end
 
+function GOReader:onOpenGOReaderBooks()
+    self:showBookList()
+    return true
+end
+
 function GOReader:showBookList()
     local lfs = require("libs/libkoreader-lfs")
     local books, why = Booklist.scan(Booklist.DEFAULT_DIR, lfs)
@@ -153,7 +163,7 @@ end
 function GOReader:addToMainMenu(menu_items)
     menu_items.goreader = {
         text = _("GOReader"),
-        sorting_hint = "more_tools",
+        sorting_hint = "main",
         sub_item_table = {
             {
                 text = _("Go books"),

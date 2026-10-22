@@ -65,7 +65,7 @@ function DiagramView.layout(sw, sh, spec, top, pad, button_h)
         board_h = max_h
         board_w = math.floor(spec.width * scale)
     end
-    local height = pad + caption_h + board_h + pad + slider_h + button_h + pad
+    local height = pad + caption_h + board_h + pad + slider_h + button_h + pad * 6   -- the extra covers the page's own caption
     local y = top and math.max(0, math.min(top, sh - height)) or math.floor((sh - height) / 2)
     local bx = math.floor((width - board_w) / 2)
     local r = {
@@ -131,12 +131,28 @@ local function line(bb, x1, y1, x2, y2, w, c)
     end
 end
 
-local function text_centered(bb, cx, cy, text, size, c)
-    local face = Font:getFace("cfont", math.max(8, math.floor(size)))
+-- Font:getFace() multiplies the size it is given by the screen density, so a
+-- size in pixels has to be divided by that factor first.
+local SANS = { "NotoSans-Regular.ttf", "DejaVuSans.ttf", "cfont" }
+local face_cache = {}
+local function sans_face(px)
+    local factor = Screen:scaleBySize(100) / 100
+    local pt = math.max(6, math.floor(px / factor + 0.5))
+    if face_cache[pt] then return face_cache[pt] end
+    for _, name in ipairs(SANS) do
+        local ok, face = pcall(Font.getFace, Font, name, pt)
+        if ok and face then face_cache[pt] = face; return face end
+    end
+end
+DiagramView.sans_face = sans_face
+
+-- Centre `text` on (cx, cy); `px` is the font size in pixels
+local function text_centered(bb, cx, cy, text, px, c)
+    local face = sans_face(px)
     if not face then return end
     local tw = RenderText:sizeUtf8Text(0, bb:getWidth(), face, text, false, false)
-    local width = tw and tw.x or (#text * size * 0.55)
-    RenderText:renderUtf8Text(bb, math.floor(cx - width / 2), math.floor(cy + size * 0.35), face, text, false, false, c)
+    local width = tw and tw.x or (#text * px * 0.55)
+    RenderText:renderUtf8Text(bb, math.floor(cx - width / 2), math.floor(cy + px * 0.36), face, text, false, false, c)
 end
 
 -- Draw the diagram's current frame into rect (bx, by) at `scale`
@@ -158,7 +174,7 @@ function DiagramView:_paint_diagram(bb, bx, by)
             if stroke then bb:paintBorder(math.floor(bx + o.x * s), math.floor(by + o.y * s),
                 math.floor(o.w * s), math.floor(o.h * s), math.max(1, math.floor((o.sw or 1) * s)), stroke) end
         elseif o.op == "text" then
-            text_centered(bb, bx + o.x * s, by + o.y * s, o.text, (o.size or 16) * s, colour(o.color, BLACK))
+            text_centered(bb, bx + o.x * s, by + o.y * s, o.text, (o.size or 16) * Gobooks.LABEL_SCALE * s, colour(o.color, BLACK))
         end
     end
 end
@@ -175,7 +191,7 @@ function DiagramView:_paint_controls(bb, x, y)
         bb:paintRect(x + sl.x, ty - 2, fx - (x + sl.x), 4, C_DARK)
         bb:paintCircle(fx, ty, math.floor(sl.h / 3), BLACK)
         bb:paintCircle(fx, ty, math.floor(sl.h / 3) - 3, WHITE)
-        text_centered(bb, x + sl.x + sl.w - 30, ty - sl.h / 2 + 4, self.diagram.frame .. "/" .. max, 14, C_GRAY)
+        text_centered(bb, x + sl.x + sl.w - 40, ty - sl.h / 2 + 6, self.diagram.frame .. "/" .. max, 22, C_GRAY)
     end
     local n = #self._buttons
     local gap = Screen:scaleBySize(6)
@@ -187,7 +203,7 @@ function DiagramView:_paint_controls(bb, x, y)
         if b[1] == "play" and self.playing then label = "⏸" end
         bb:paintRect(bx, cy, bw, lay.button_h, C_LIGHT)
         bb:paintBorder(bx, cy, bw, lay.button_h, 1, C_GRAY)
-        text_centered(bb, bx + bw / 2, cy + lay.button_h / 2, label, lay.button_h * 0.42, BLACK)
+        text_centered(bb, bx + bw / 2, cy + lay.button_h / 2, label, lay.button_h * 0.45, BLACK)
         self._button_rects[#self._button_rects + 1] = { id = b[1], x = bx, y = cy, w = bw, h = lay.button_h }
     end
 end
@@ -199,7 +215,7 @@ function DiagramView:paintTo(bb, x, y)
     bb:paintRect(x, oy, lay.w, lay.h, WHITE)
     bb:paintBorder(x, oy, lay.w, lay.h, 2, BLACK)
     if lay.caption.h > 0 then
-        text_centered(bb, x + lay.w / 2, oy + lay.caption.y + lay.caption.h / 2, self.spec.caption, 22, C_DARK)
+        text_centered(bb, x + lay.w / 2, oy + lay.caption.y + lay.caption.h / 2, self.spec.caption, 32, C_DARK)
     end
     self:_paint_diagram(bb, x + lay.board.x, oy + lay.board.y)
     self:_paint_controls(bb, x, oy)
