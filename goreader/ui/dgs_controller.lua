@@ -14,6 +14,7 @@
 --]]
 
 local DGSGame = require("goreader.core.dgsgame")
+local Last    = require("goreader.ui.lastmove")
 
 local Controller = {}
 Controller.__index = Controller
@@ -55,18 +56,23 @@ function Controller:state()
         comment = (g:staged() and "") or ((s.comment ~= "" and s.comment) or s.analysis_note or ""),
         busy = self.busy,
     }
+    -- always say where the latest move is: the current move is what you came to see
+    local lm = Last.text(s.last, s.size, s.move_number)
+    if lm and not g:staged() and not (g.message and g.message ~= "") then
+        st.status = st.status .. "  ·  last: " .. lm
+    end
     if g:staged() then
         st.bottom = { kind = "confirm", prompt = "Submit " .. g:describe_staged() .. " to Dragon Go Server?",
                       ok = "CONFIRM MOVE", cancel = "Cancel" }
     else
-        local nav = {
+        -- one small row: navigation, then actions
+        local row = {
             { id = "first", label = "|<", enabled = s.can_prev }, { id = "prev", label = "<", enabled = s.can_prev },
             { id = "next", label = ">", enabled = s.can_next }, { id = "last", label = ">|", enabled = s.can_next },
         }
-        local acts = {}
-        if g:can_move() then acts[#acts + 1] = { id = "pass", label = "Pass" } end
-        acts[#acts + 1] = { id = "reload", label = "Refresh" }
-        st.bottom = { kind = "buttons", rows = { nav, acts } }
+        if g:can_move() then row[#row + 1] = { id = "pass", label = "Pass" } end
+        row[#row + 1] = { id = "reload", label = "Refresh" }
+        st.bottom = { kind = "buttons", rows = { row } }
     end
     return st
 end

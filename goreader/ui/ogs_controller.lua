@@ -14,6 +14,7 @@
 local Play    = require("goreader.core.ogsplay")
 local OGSGame = require("goreader.core.ogsgame")
 local Chat    = require("goreader.core.chat")
+local Last    = require("goreader.ui.lastmove")
 
 local Controller = {}
 Controller.__index = Controller
@@ -108,6 +109,8 @@ function Controller:state()
         st.status = "Watching live" .. (tc.system and ("  ·  " .. tc.system) or "")
     end
 
+    local lm = Last.text(st.board.last, size, g:move_count())
+    if lm and g.phase == "play" then st.status = st.status .. "  ·  last: " .. lm end
     local lines = play.chat:recent(3)
     st.comment = chat_text(lines)
     local unread = play.chat.unread

@@ -45,29 +45,37 @@ function GameScreen.layout(sw, sh, st, dp)
     local pad = dp(8)
     local r = { pad = pad, sw = sw, sh = sh }
     local y = 0
-    r.header = { x = 0, y = y, w = sw, h = dp(48) }; y = y + r.header.h
-    r.players = { x = 0, y = y, w = sw, h = dp(48) }; y = y + r.players.h
-    local board_w = sw - 2 * pad
-    local lay = BoardView.layout(board_w, (st.board and st.board.size) or 19, { coords = true })
-    r.board = { x = pad, y = y + dp(4), w = board_w, h = lay.height, lay = lay }
-    y = r.board.y + r.board.h + dp(4)
+    r.header = { x = 0, y = y, w = sw, h = dp(44) }; y = y + r.header.h
+    r.players = { x = 0, y = y, w = sw, h = dp(44) }; y = y + r.players.h
 
     local bottom = st.bottom or { kind = "buttons", rows = {} }
+    local confirm_h = dp(150)
+    local row_h, gap = dp(44), dp(6)
+    local rows = (bottom.kind == "buttons") and bottom.rows or {}
+    local rows_h = (#rows > 0) and (#rows * (row_h + gap) + gap) or 0
+
+    -- The board is as wide as the screen allows but never so tall that the
+    -- confirmation dialog (or the status line and button row) would not fit
+    -- below it. It keeps the same size in both modes so it never jumps.
+    local reserve = confirm_h + dp(8)
+    local avail = sh - y - reserve
+    local board_w = math.min(sw - 2 * pad, avail)
+    local lay = BoardView.layout(board_w, (st.board and st.board.size) or 19, { coords = true })
+    r.board = { x = math.floor((sw - board_w) / 2), y = y + dp(4), w = board_w, h = lay.height, lay = lay }
+    y = r.board.y + r.board.h + dp(4)
+
     if bottom.kind == "confirm" then
-        r.confirm = { x = pad, y = y, w = sw - 2 * pad, h = dp(150) }
+        r.confirm = { x = pad, y = y, w = sw - 2 * pad, h = confirm_h }
         r.confirm.prompt = { x = r.confirm.x, y = y, w = r.confirm.w, h = dp(56) }
         r.confirm.buttons = { x = r.confirm.x, y = y + dp(60), w = r.confirm.w, h = dp(82) }
         y = y + r.confirm.h
     else
-        r.status = { x = pad, y = y, w = sw - 2 * pad, h = dp(40) }
+        r.status = { x = pad, y = y, w = sw - 2 * pad, h = dp(34) }
         y = y + r.status.h
     end
     -- button rows hug the bottom edge
-    local rows = (bottom.kind == "buttons") and bottom.rows or {}
-    local row_h, gap = dp(64), dp(8)
-    local bottom_h = (#rows > 0) and (#rows * row_h + (#rows + 1) * gap) or 0
-    r.rows = { x = pad, y = sh - bottom_h + gap, w = sw - 2 * pad, h = row_h, count = #rows, gap = gap, band_y = sh - bottom_h }
-    local comment_h = (bottom.kind == "confirm") and 0 or math.max(0, (sh - bottom_h) - y)
+    r.rows = { x = pad, y = sh - rows_h + gap, w = sw - 2 * pad, h = row_h, count = #rows, gap = gap, band_y = sh - rows_h }
+    local comment_h = (bottom.kind == "confirm") and 0 or math.max(0, (sh - rows_h) - y)
     r.comment = { x = pad, y = y, w = sw - 2 * pad, h = comment_h }
     return r
 end
@@ -178,7 +186,7 @@ function GameScreen:paintTo(bb, x, y)
     else
         local s = lay.status
         if st.status and st.status ~= "" then
-            Kit.text_left(bb, x + s.x, y + s.y + s.h / 2, st.status, math.floor(s.h * 0.55), Kit.BLACK, true, s.w)
+            Kit.text_left(bb, x + s.x, y + s.y + s.h / 2, st.status, math.floor(s.h * 0.6), Kit.BLACK, true, s.w)
         end
     end
 
@@ -204,7 +212,7 @@ function GameScreen:paintTo(bb, x, y)
         for i, row in ipairs(bt.rows) do
             local items = {}
             for _, b in ipairs(row) do items[#items + 1] = { b.id, b.label, b.style or (b.enabled == false and "disabled") or "normal" } end
-            local rects = Kit.button_row(bb, x + rl.x, y + rl.band_y + rl.gap + (i - 1) * (rl.h + rl.gap), rl.w, rl.h, items, Kit.dp(8))
+            local rects = Kit.button_row(bb, x + rl.x, y + rl.band_y + rl.gap + (i - 1) * (rl.h + rl.gap), rl.w, rl.h, items, Kit.dp(4))
             for _, r in ipairs(rects) do self._rects.buttons[#self._rects.buttons + 1] = r end
         end
     end

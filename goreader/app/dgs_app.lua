@@ -10,6 +10,10 @@ local DGS        = require("goreader.services.dgs")
 local DGSGame    = require("goreader.core.dgsgame")
 local Controller = require("goreader.ui.dgs_controller")
 local GameScreen = require("goreader.ui.gamescreen")
+local SGF        = require("goreader.core.sgf")
+local ReviewModel = require("goreader.ui.review_model")
+local ReviewController = require("goreader.ui.review_controller")
+local Storage    = require("goreader.services.storage")
 
 local App = {}
 App.__index = App
@@ -170,6 +174,8 @@ function App:open_game(client, row)
     Env.with_progress("Loading the game…", function()
         local sgf, err = retrying(client, function() return client:download_sgf(gid) end)
         if not sgf then Env.info("Could not load the game (" .. tostring(err) .. ")."); self:open(); return end
+        -- Nothing for you to do here: open it as a replay of the game
+        if not row.my_turn then return self:open_replay(row, sgf) end
         local game, gerr = DGSGame.new{ sgf = sgf, my_color = row.my_color, gid = gid,
                                         move_id = row.game.move_id, opponent = row.opponent }
         if not game then Env.info("Cannot show this game: " .. tostring(gerr)); return end
@@ -197,6 +203,43 @@ function App:open_game(client, row)
         UIManager:show(screen)
         UIManager:setDirty(nil, "full")
     end)
+end
+
+-- A game that is not waiting on you: replay it from the first move
+function App:open_replay(row, sgf)
+    local game = SGF.parse(sgf)
+    if not game then Env.info("This game could not be read."); return self:open() end
+    game:go_to_root()
+    local model = ReviewModel.new{ game = game }
+    local lfs = require("libs/libkoreader-lfs")
+    local storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+    local ctl = ReviewController.new{
+        model = model, title = row.opponent .. "  ·  replay",
+        edit_note = function(initial, cb)
+            local InputDialog = require("ui/widget/inputdialog")
+            local dlg
+            dlg = InputDialog:new{
+                title = "Note for move " .. model:state().move_number, input = initial or "",
+                input_type = "text", allow_newline = true,
+                buttons = {{
+                    { text = "Cancel", callback = function() UIManager:close(dlg); cb(nil) end },
+                    { text = "Save note", callback = function() local t = dlg:getInputText() or ""; UIManager:close(dlg); cb(t) end },
+                }},
+            }
+            UIManager:show(dlg); dlg:onShowKeyboard()
+        end,
+        -- notes added to a replayed DGS game are kept in the saved-games library
+        save = function(text)
+            storage:ensure()
+            local name = "dgs-" .. Storage.sanitize(row.opponent, "opponent") .. "-" .. tostring(row.game.id)
+            return storage:save_game(text, name, storage.dirs.games .. "/" .. name .. ".sgf")
+        end,
+    }
+    local screen
+    ctl.on_change = function() if screen then screen:update() end end
+    screen = GameScreen:new{ controller = ctl, on_close = function() self:open() end }
+    UIManager:show(screen)
+    UIManager:setDirty(nil, "full")
 end
 
 function App:menu_items()

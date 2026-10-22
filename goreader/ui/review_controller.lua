@@ -10,6 +10,8 @@
         }
 --]]
 
+local Last = require("goreader.ui.lastmove")
+
 local Controller = {}
 Controller.__index = Controller
 
@@ -75,21 +77,21 @@ function Controller:state()
     if s.analysis_note then text = (text ~= "" and (text .. "\n\n") or "") .. s.analysis_note end
     if s.node_name ~= "" then text = s.node_name .. (text ~= "" and ("\n" .. text) or "") end
 
-    local nav = {
+    -- one small row: navigation, then the tools
+    local has_analysis = m:has_analysis()
+    local row = {
         { id = "first", label = "|<", enabled = s.can_prev }, { id = "prev", label = "<", enabled = s.can_prev },
         { id = "next", label = ">", enabled = s.can_next }, { id = "last", label = ">|", enabled = s.can_next },
-    }
-    local has_analysis = m:has_analysis()
-    local extra = {
-        { id = "mistake", label = "Mistake ▸", enabled = has_analysis },
-        { id = "cands", label = "Hints", style = (s.candidates and #s.candidates > 0 or m.show_candidates) and has_analysis and m.show_candidates and "toggle_on" or nil,
-          enabled = has_analysis },
-        { id = "numbers", label = "Numbers", style = self.show_numbers and "toggle_on" or nil },
+        { id = "mistake", label = "Mistake", enabled = has_analysis },
+        { id = "cands", label = "Hints", enabled = has_analysis,
+          style = (has_analysis and m.show_candidates) and "toggle_on" or nil },
+        s.main_line and { id = "numbers", label = "Nums", style = self.show_numbers and "toggle_on" or nil }
+                     or { id = "mainline", label = "Main" },
         { id = "note", label = "Note" },
     }
-    if not s.main_line then
-        table.insert(extra, 1, { id = "mainline", label = "Main line" })
-        table.remove(extra, #extra - 1)                     -- keep the row to four buttons
+    if status == "" or status == nil then
+        local lm = Last.text(s.last, s.size, s.move_number)
+        status = lm and ("Last move: " .. lm) or ""
     end
 
     return {
@@ -99,7 +101,7 @@ function Controller:state()
         white = { name = s.white.name, rank = s.white.rank, captures = s.captures.W },
         to_move = s.to_move, board = board, show_numbers = self.show_numbers,
         status = status, comment = text,
-        bottom = { kind = "buttons", rows = { nav, extra } },
+        bottom = { kind = "buttons", rows = { row } },
     }
 end
 

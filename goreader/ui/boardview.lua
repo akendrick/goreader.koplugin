@@ -171,16 +171,16 @@ function BoardView.paint(bb, x, y, lay, state, opts)
         return
     end
 
-    -- last move
+    -- last move: a clear ring on the stone (white ring on black, black ring on white)
     local last = state.last
     if last and last.col then
         local sx, sy = BoardView.px(lay, last.col, last.row)
-        if last.color == "B" then
-            disc(bb, x + sx, y + sy, math.max(3, math.floor(r * 0.32)), Kit.WHITE)
-            disc(bb, x + sx, y + sy, math.max(2, math.floor(r * 0.32) - 3), Kit.BLACK)
-        else
-            disc(bb, x + sx, y + sy, math.max(3, math.floor(r * 0.30)), Kit.BLACK)
-        end
+        local ring_r = math.max(5, math.floor(r * 0.58))
+        local ring_w = math.max(4, math.floor(r * 0.16))
+        local fill = last.color == "B" and Kit.BLACK or Kit.WHITE
+        local line = last.color == "B" and Kit.WHITE or Kit.BLACK
+        disc(bb, x + sx, y + sy, ring_r, line)
+        disc(bb, x + sx, y + sy, ring_r - ring_w, fill)
     end
 
     -- SGF marks
