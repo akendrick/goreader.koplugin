@@ -11,6 +11,7 @@ local InfoMessage     = require("ui/widget/infomessage")
 local logger          = require("logger")
 local _               = require("gettext")
 
+local Booklist = require("goreader.book.booklist")
 local Prepare = require("goreader.book.prepare")
 local Gobooks = require("goreader.book.gobooks")
 
@@ -101,6 +102,51 @@ function GOReader:onFigureTapped(url, lnk)
 end
 
 -- ---------------------------------------------------------------------------
+-- Go books list (works even when KOReader shows a virtual library, not folders)
+-- ---------------------------------------------------------------------------
+
+function GOReader:openBook(path)
+    if self.ui.document then
+        if self.ui.switchDocument then return self.ui:switchDocument(path) end
+        UIManager:show(InfoMessage:new{ text = _("Close the current book first, then open this one.") })
+        return
+    end
+    local ReaderUI = require("apps/reader/readerui")
+    ReaderUI:showReader(path)
+end
+
+function GOReader:showBookList()
+    local lfs = require("libs/libkoreader-lfs")
+    local books, why = Booklist.scan(Booklist.DEFAULT_DIR, lfs)
+    if not books then
+        UIManager:show(InfoMessage:new{
+            text = _("No Go books folder found.\nPut prepared books in:\n") .. Booklist.DEFAULT_DIR })
+        return
+    end
+    if #books == 0 then
+        UIManager:show(InfoMessage:new{
+            text = _("No Go books yet.\nPut prepared .epub files in:\n") .. Booklist.DEFAULT_DIR })
+        return
+    end
+    local Menu = require("ui/widget/menu")
+    local menu
+    menu = Menu:new{
+        title = _("Go books"),
+        item_table = Booklist.menu_items(books),
+        covers_fullscreen = true,
+        is_borderless = true,
+        is_popout = false,
+        title_multilines = true,
+        onMenuSelect = function(_, item)
+            UIManager:close(menu)
+            self:openBook(item.path)
+        end,
+        close_callback = function() UIManager:close(menu) end,
+    }
+    UIManager:show(menu)
+end
+
+-- ---------------------------------------------------------------------------
 -- Menu
 -- ---------------------------------------------------------------------------
 
@@ -109,6 +155,10 @@ function GOReader:addToMainMenu(menu_items)
         text = _("GOReader"),
         sorting_hint = "more_tools",
         sub_item_table = {
+            {
+                text = _("Go books"),
+                callback = function() self:showBookList() end,
+            },
             {
                 text = _("About this book"),
                 enabled_func = function() return self.ui.document ~= nil end,
