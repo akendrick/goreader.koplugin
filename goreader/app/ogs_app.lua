@@ -80,7 +80,7 @@ function App:show_game_list(session, games, size_label, filter_index, page, tota
             game = g,
         }
     end
-    local f = FILTERS[filter_index or 1]
+    local f = App.FILTERS[filter_index or 1]
     local more_available = (f.order == "weak") and (App.page_start(f, total, (page or 0) + 1) < App.page_start(f, total, page or 0))
                            or (f.order ~= "weak" and #games >= App.PAGE)
     if more_available then

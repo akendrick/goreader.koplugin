@@ -151,9 +151,10 @@ end
 -- What to draw
 -- ---------------------------------------------------------------------------
 
---[[ A BoardView state for the current position, with the staged move shown
-     as the focus stone while confirming. ]]
-function DGSGame:board_state()
+--[[ A BoardView state for the current position. The staged move is drawn
+     ringed (mode "options", the default) or as the focus stone on a slightly
+     dimmed board (mode "confirm"). ]]
+function DGSGame:board_state(mode)
     local s = self.model:state()
     local board = {}
     for r = 1, s.size do
@@ -167,7 +168,8 @@ function DGSGame:board_state()
     local m = self.staged_move
     if m and not m.pass then
         board[m.row][m.col] = m.color
-        st.focus = { col = m.col, row = m.row, color = m.color }
+        local spot = { col = m.col, row = m.row, color = m.color }
+        if mode == "confirm" then st.focus = spot else st.pending = spot end      -- dim the board only when confirming
         st.last, st.marks, st.variations, st.candidates = nil, nil, nil, nil
     end
     return st, s

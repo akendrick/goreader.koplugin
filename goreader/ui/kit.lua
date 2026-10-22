@@ -22,6 +22,8 @@ Kit.MID   = Blitbuffer.Color8(0xAA)
 Kit.LIGHT = Blitbuffer.Color8(0xDD)
 Kit.PALE  = Blitbuffer.Color8(0xF0)
 Kit.FADE  = Blitbuffer.Color8(0xCC)
+-- While a move is being confirmed the board is only SLIGHTLY dimmed: ink at 80% black
+Kit.FADE_INK = Blitbuffer.Color8(0x33)
 
 -- ---------------------------------------------------------------------------
 -- Fonts

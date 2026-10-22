@@ -9,7 +9,8 @@
       size, board = rows of "B"/"W"/false,            required
       last   = { col, row, color } | { pass = true },   marker on the last move
       marks  = { {kind="TR"|"SQ"|"CR"|"MA"|"LB", col,row,text} },
-      focus  = { col,row,color },   fade everything, draw this stone at full strength
+      focus  = { col,row,color },   slightly dim the board (80% ink), draw this stone at full strength
+      pending = { col,row,color },  a move chosen but not yet confirmed: ringed, board not dimmed
       candidates = { {col,row,label,winrate,played} }, engine suggestions (A, B, ...)
       variations = { {col,row,label} },                 next-move choices (A, B, ...)
       dead   = { ["c,r"] = true },                      stones marked dead (scoring)
@@ -100,7 +101,7 @@ function BoardView.paint(bb, x, y, lay, state, opts)
     opts = opts or {}
     local size, cell, r = lay.size, lay.cell, lay.r
     local focus = state.focus
-    local ink = focus and Kit.FADE or Kit.BLACK              -- the "20% gray" look while confirming
+    local ink = focus and Kit.FADE_INK or Kit.BLACK          -- slightly dimmed (80% black) while confirming
     local board_bg = focus and Kit.WHITE or Kit.FADE
 
     Kit.fill(bb, x, y, lay.width, lay.height, Kit.WHITE)
@@ -128,8 +129,8 @@ function BoardView.paint(bb, x, y, lay, state, opts)
         local px = math.max(10, math.floor(lay.label * 0.62))
         for i = 1, size do
             local cx, cy = BoardView.px(lay, i, i)
-            Kit.text_centered(bb, x + cx, y + lay.label * 0.5, LETTERS:sub(i, i), px, focus and Kit.FADE or Kit.GRAY)
-            Kit.text_centered(bb, x + lay.label * 0.5, y + cy, tostring(size - i + 1), px, focus and Kit.FADE or Kit.GRAY)
+            Kit.text_centered(bb, x + cx, y + lay.label * 0.5, LETTERS:sub(i, i), px, focus and Kit.DARK or Kit.GRAY)
+            Kit.text_centered(bb, x + lay.label * 0.5, y + cy, tostring(size - i + 1), px, focus and Kit.DARK or Kit.GRAY)
         end
     end
 
@@ -167,8 +168,19 @@ function BoardView.paint(bb, x, y, lay, state, opts)
     -- the pending move at full strength
     if focus then
         local sx, sy = BoardView.px(lay, focus.col, focus.row)
+        disc(bb, x + sx, y + sy, r + math.max(4, math.floor(r * 0.14)), Kit.BLACK)       -- an outer ring for emphasis
+        disc(bb, x + sx, y + sy, r + 1, Kit.WHITE)
         stone(bb, x + sx, y + sy, r, focus.color, Kit.BLACK, math.max(4, math.floor(r * 0.24)))
         return
+    end
+
+    -- a move chosen but not yet confirmed: the stone with a ring around it
+    local pend = state.pending
+    if pend then
+        local sx, sy = BoardView.px(lay, pend.col, pend.row)
+        disc(bb, x + sx, y + sy, r + math.max(4, math.floor(r * 0.14)), Kit.BLACK)
+        disc(bb, x + sx, y + sy, r + 1, Kit.WHITE)
+        stone(bb, x + sx, y + sy, r, pend.color, Kit.BLACK, thick)
     end
 
     -- last move: a clear ring on the stone (white ring on black, black ring on white)

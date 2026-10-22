@@ -33,6 +33,8 @@ function Controller.new(opts)
     return setmetatable({
         game = assert(opts.game), submit = opts.submit, refresh = opts.refresh,
         schedule = opts.schedule or function(fn) fn() end, notify = opts.notify or function() end,
+        play_out = opts.play_out,          -- function(controller): opens the play-out board
+        phase = nil,                       -- nil | "options" (CANCEL / PLAY OUT / SUBMIT) | "confirm"
         busy = false, on_change = function() end,
     }, Controller)
 end
@@ -45,7 +47,8 @@ local function changed(self) self.on_change() end
 
 function Controller:state()
     local g = self.game
-    local board, s = g:board_state()
+    if not g:staged() then self.phase = nil end
+    local board, s = g:board_state(self.phase == "confirm" and "confirm" or "options")
     local st = {
         title = (g.opponent and (g.opponent .. "  ·  ") or "") .. s.size .. "x" .. s.size,
         counter = s.move_number .. " / " .. s.total,
@@ -62,8 +65,15 @@ function Controller:state()
         st.status = st.status .. "  ·  last: " .. lm
     end
     if g:staged() then
-        st.bottom = { kind = "confirm", prompt = "Submit " .. g:describe_staged() .. " to Dragon Go Server?",
-                      ok = "CONFIRM MOVE", cancel = "Cancel" }
+        local what = g:describe_staged()
+        if self.phase == "confirm" then
+            st.bottom = { kind = "confirm", prompt = "Submit " .. what .. " to Dragon Go Server?",
+                          buttons = { { id = "cancel", label = "Cancel" }, { id = "confirm", label = "CONFIRM MOVE", style = "primary" } } }
+        else
+            st.bottom = { kind = "confirm", prompt = what .. ": what next?",
+                          buttons = { { id = "cancel", label = "CANCEL" }, { id = "playout", label = "PLAY OUT" },
+                                      { id = "submit", label = "SUBMIT", style = "primary" } } }
+        end
     else
         -- one small row: navigation, then actions
         local row = {
@@ -87,7 +97,8 @@ function Controller:board_tap(col, row)
     g.message = nil
     if g:my_turn() then
         local ok, why = g:stage(col, row)
-        if not ok then g.message = REASONS[why] or ("Cannot play there (" .. tostring(why) .. ")") end
+        if not ok then g.message = REASONS[why] or ("Cannot play there (" .. tostring(why) .. ")")
+        else self.phase = "options" end                  -- a new point: back to the three choices
     end
 end
 
@@ -98,6 +109,7 @@ function Controller:_do_submit()
     if not ok then
         g:submit_failed(err)
     else
+        self.phase = nil
         local fresh = self.refresh and self.refresh()
         g:submitted(fresh and fresh.sgf or nil)
         if fresh and fresh.move_id then g.move_id = fresh.move_id end
@@ -143,10 +155,16 @@ function Controller:button(id)
     elseif id == "prev" then m:prev(); g.message = nil
     elseif id == "next" then m:next(); g.message = nil
     elseif id == "last" then m:last(); g.message = nil
-    elseif id == "cancel" then g:cancel()
+    elseif id == "cancel" then
+        if self.phase == "confirm" then self.phase = "options"      -- one step back: the three choices
+        else g:cancel(); self.phase = nil end                        -- CANCEL: back to the last move
+    elseif id == "submit" then
+        if g:staged() then self.phase = "confirm" end
+    elseif id == "playout" then
+        if g:staged() and self.play_out then self.play_out(self) end
     elseif id == "pass" then
         local ok, why = g:stage_pass()
-        if not ok then g.message = REASONS[why] or "Cannot pass now." end
+        if not ok then g.message = REASONS[why] or "Cannot pass now." else self.phase = "options" end
     elseif id == "confirm" then
         if not g:begin_submit() then return end
         self.busy = true
@@ -158,9 +176,13 @@ function Controller:button(id)
     end
 end
 
--- Back button: cancel a pending move first; leave only when nothing is pending
+-- Back button: step back out of the move choices first; leave only when nothing is pending
 function Controller:back()
-    if self.game:staged() then self.game:cancel(); return false end
+    if self.game:staged() then
+        if self.phase == "confirm" then self.phase = "options"
+        else self.game:cancel(); self.phase = nil end
+        return false
+    end
     return true
 end
 

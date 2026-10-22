@@ -9,7 +9,8 @@
         board = BoardView state, show_numbers = bool,
         status = "Your move (Black)", comment = "...",
         bottom = { kind = "buttons", rows = { { {id,label,style}, ... }, ... } }
-              or { kind = "confirm", prompt, ok = "CONFIRM MOVE", cancel = "Cancel" },
+              or { kind = "confirm", prompt = "...", buttons = { {id,label,style}, ... } },
+              (the older form ok = "CONFIRM MOVE", cancel = "Cancel" still works)
         busy = bool }
     controller:board_tap(col, row)      controller:button(id)
     controller:back() -> true to close  controller:menu()  (optional)
@@ -178,10 +179,16 @@ function GameScreen:paintTo(bb, x, y)
         Kit.text_centered(bb, x + c.prompt.x + c.prompt.w / 2, y + c.prompt.y + c.prompt.h / 2 + Kit.dp(4),
             Kit.fit(bb, bt.prompt or "", math.floor(c.prompt.h * 0.46), c.w - Kit.dp(24), true),
             math.floor(c.prompt.h * 0.46), Kit.BLACK, true)
-        local rects = Kit.button_row(bb, x + c.buttons.x + Kit.dp(8), y + c.buttons.y, c.buttons.w - Kit.dp(16), c.buttons.h - Kit.dp(8), {
-            { "cancel", bt.cancel or "Cancel", "normal" },
-            { "confirm", bt.ok or "CONFIRM MOVE", st.busy and "disabled" or "primary" },
-        }, Kit.dp(12))
+        local buttons = bt.buttons
+        if not buttons then
+            buttons = { { "cancel", bt.cancel or "Cancel", "normal" },
+                        { "confirm", bt.ok or "CONFIRM MOVE", st.busy and "disabled" or "primary" } }
+        else
+            local b2 = {}
+            for _, b in ipairs(buttons) do b2[#b2 + 1] = { b.id, b.label, st.busy and "disabled" or b.style or "normal" } end
+            buttons = b2
+        end
+        local rects = Kit.button_row(bb, x + c.buttons.x + Kit.dp(8), y + c.buttons.y, c.buttons.w - Kit.dp(16), c.buttons.h - Kit.dp(8), buttons, Kit.dp(12))
         self._rects.confirm_buttons = rects
     else
         local s = lay.status
