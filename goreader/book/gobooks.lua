@@ -167,9 +167,36 @@ local function transitions(s)
     return out
 end
 
+--[[ In these books only the FIRST diagram of a chapter carries the stone
+     shapes (<defs>) and the label styles (<style>); every later diagram reuses
+     them. context() pulls them out of a diagram that has them, and
+     inject() puts them into one that lacks them, so each diagram is complete
+     on its own. ]]
+function Gobooks.context(xml)
+    local defs = xml:match("<defs>.-</defs>")
+    local style = xml:match("<style[^>]*>.-</style>")
+    if not defs and not style then return nil end
+    return { defs = defs, style = style }
+end
+
+function Gobooks.inject(xml, ctx)
+    if not ctx then return xml end
+    local has_defs = xml:find("<defs>", 1, true) ~= nil
+    local has_style = xml:find("<style", 1, true) ~= nil
+    local add = {}
+    if not has_defs and ctx.defs then add[#add + 1] = ctx.defs end
+    if not has_style and ctx.style then add[#add + 1] = ctx.style end
+    if #add == 0 then return xml end
+    local s, e = xml:find("<svg[^>]*>")
+    if not s then return xml end
+    return xml:sub(1, e) .. "\n" .. table.concat(add, "\n") .. xml:sub(e + 1)
+end
+
 --[[ Parse one `<div class="fig ...">` (or just its <svg>) into a spec. Returns
-     spec or nil + reason. See the file header for what a spec contains. ]]
-function Gobooks.parse_figure(xml)
+     spec or nil + reason. `ctx` (see context()) supplies shapes and styles the
+     diagram itself does not carry. See the file header for what a spec contains. ]]
+function Gobooks.parse_figure(xml, ctx)
+    xml = Gobooks.inject(xml, ctx)
     local svg = xml:match("<svg.-</svg>")
     if not svg then return nil, "no svg" end
     local head = svg:match("<svg([^>]*)>")

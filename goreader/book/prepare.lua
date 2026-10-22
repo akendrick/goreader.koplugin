@@ -41,19 +41,25 @@ function Prepare.parse_link(url)
 end
 
 --[[ Rewrite one chapter. Returns nil when it has no diagrams to handle.
-     Otherwise: new_text, side_file_text, number_of_diagrams. ]]
-function Prepare.chapter(text, key)
+     Otherwise: new_text, side_file_text, number_of_diagrams, ctx_out.
+     `ctx` is the stone/label context carried over from earlier chapters, for a
+     chapter whose first diagram does not carry its own. Every diagram is made
+     self-contained (see Gobooks.context) before it is drawn and stored. ]]
+function Prepare.chapter(text, key, ctx)
     if not Gobooks.is_gobooks(text) then return nil end
     local figs = Gobooks.figures(text)
     if #figs == 0 then return nil end
 
     local out, side, last, count = {}, {}, 1, 0
     for _, fig in ipairs(figs) do
-        local spec = Gobooks.parse_figure(fig.xml)
+        local own = Gobooks.context(fig.xml)                -- keep what earlier diagrams defined, add or replace what this one defines
+        if own then ctx = { defs = own.defs or (ctx and ctx.defs), style = own.style or (ctx and ctx.style) } end
+        local xml = Gobooks.inject(fig.xml, ctx)
+        local spec = Gobooks.parse_figure(xml)
         out[#out + 1] = text:sub(last, fig.first - 1)
         if spec then
             count = count + 1
-            side[#side + 1] = SEP:format(fig.index) .. fig.xml
+            side[#side + 1] = SEP:format(fig.index) .. xml
             local div_class = spec.div_class or "fig center"
             local caption = ""
             if spec.caption and spec.caption ~= "" then
@@ -69,7 +75,7 @@ function Prepare.chapter(text, key)
     end
     out[#out + 1] = text:sub(last)
     if count == 0 then return nil end
-    return table.concat(out), table.concat(side), count
+    return table.concat(out), table.concat(side), count, ctx
 end
 
 --[[ The original markup of diagram n, from a side file's text. ]]
@@ -89,12 +95,14 @@ end
      Returns { chapters = n, figures = n }. ]]
 function Prepare.book(io)
     local stats = { chapters = 0, figures = 0 }
+    local ctx
     for _, path in ipairs(io.entries()) do
         local data = io.read(path)
         local handled = false
         if path:lower():match("%.x?html?$") and not path:find("^META%-INF/") then
-            local new, side, n = Prepare.chapter(data, Prepare.chapter_key(path))
+            local new, side, n, ctx_out = Prepare.chapter(data, Prepare.chapter_key(path), ctx)
             if new then
+                ctx = ctx_out
                 io.write_entry(path, new)
                 io.write_entry(Prepare.side_path(Prepare.chapter_key(path)), side)
                 stats.chapters, stats.figures = stats.chapters + 1, stats.figures + n
