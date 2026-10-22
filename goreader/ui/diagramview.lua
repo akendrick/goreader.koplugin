@@ -106,7 +106,11 @@ function DiagramView:init()
     self.lay = DiagramView.layout(self.sw, self.sh, spec, self.top, Screen:scaleBySize(8), Screen:scaleBySize(36))
     self.dimen = Geom:new{ x = 0, y = self.lay.y, w = self.lay.w, h = self.lay.h }
     self.ges_events = { Tap = { GestureRange:new{ ges = "tap", range = self.dimen } } }
-    self.key_events = { Close = { { "Back" } } }
+    self.key_events = {
+        Close = { { "Back" } },
+        Next = { { { "RPgFwd", "LPgFwd", "Right" } }, event = "NavKey", args = "next" },
+        Prev = { { { "RPgBack", "LPgBack", "Left" } }, event = "NavKey", args = "prev" },
+    }
     self.playing = false
     self._buttons = DiagramView.buttons_for(spec.kind)
 end
@@ -314,6 +318,12 @@ function DiagramView:onTap(_, ges)
             return self:do_button(b.id)
         end
     end
+    return true
+end
+
+-- The physical page-turn buttons step the diagram like the on-screen ones
+function DiagramView:onNavKey(dir)
+    if dir == "next" or dir == "prev" then return self:do_button(dir) end
     return true
 end
 

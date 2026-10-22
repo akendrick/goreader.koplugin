@@ -30,7 +30,7 @@ function Controller.new(opts)
     local self = setmetatable({
         session = assert(opts.session), game_id = assert(opts.game_id),
         title = opts.title, show_text = opts.show_text or function() end,
-        now = opts.now or os.time, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
+        now = opts.now or os.time, live_clocks = true, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
         on_change = function() end, closed = false,
     }, Controller)
     self.play = Play.new{
@@ -118,6 +118,7 @@ function Controller:state()
     if lm and g.phase == "play" then st.status = st.status .. "  ·  last: " .. lm end
     local lines = play.chat:recent(3)
     st.comment = chat_text(lines)
+    st.comment_bottom = true
     local unread = play.chat.unread
     st.bottom.rows = { {
         { id = "chat", label = unread > 0 and ("Chat (" .. unread .. ")") or "Chat" },

@@ -33,6 +33,7 @@ local GameScreen = InputContainer:extend{
     controller = nil,
     on_close = nil,
     tick_seconds = 1,
+    clock_seconds = 5,          -- how often the player bar's clocks are refreshed (only that strip)
 }
 
 -- ---------------------------------------------------------------------------
@@ -112,11 +113,26 @@ function GameScreen:_schedule_tick()
     if not self.controller.tick then return end
     self._tick = self._tick or function()
         if self.closed then return end
-        local changed = self.controller:tick(os.time())
-        if changed then self:update() end
+        local now = os.time()
+        local changed = self.controller:tick(now)
+        if changed then self:update(); self._clock_at = now
+        else self:_refresh_clocks(now) end
         UIManager:scheduleIn(self.tick_seconds, self._tick)
     end
     UIManager:scheduleIn(self.tick_seconds, self._tick)
+end
+
+-- Live clocks: redraw just the player bar, and only when a clock reading changed
+function GameScreen:_refresh_clocks(now)
+    if not self.controller.live_clocks then return end
+    if self._clock_at and now - self._clock_at < self.clock_seconds then return end
+    self._clock_at = now
+    local st = self.controller:state()
+    local function sig(s) return ((s.black or {}).clock or "") .. "|" .. ((s.white or {}).clock or "") end
+    if sig(st) == sig(self.st) then return end
+    self.st = st
+    local p = self.lay.players
+    UIManager:setDirty(self, "ui", Geom:new{ x = p.x, y = p.y, w = p.w, h = p.h })
 end
 
 function GameScreen:getSize() return self.dimen end
@@ -213,10 +229,22 @@ function GameScreen:paintTo(bb, x, y)
         local lines = Kit.wrap(bb, st.comment, px, cm.w)
         local line_h = math.floor(px * 1.3)
         local max_lines = math.floor(cm.h / line_h)
-        for i = 1, math.min(#lines, max_lines) do
-            local text = lines[i]
-            if i == max_lines and #lines > max_lines then text = Kit.fit(bb, text .. " …", px, cm.w) end
-            Kit.text_left(bb, x + cm.x, y + cm.y + (i - 0.5) * line_h, text, px, Kit.DARK)
+        if st.comment_bottom then
+            -- newest line last, sitting directly above the buttons
+            local first = math.max(1, #lines - max_lines + 1)
+            local shown = #lines - first + 1
+            local top = cm.y + cm.h - shown * line_h
+            for i = first, #lines do
+                local text = lines[i]
+                if i == first and first > 1 then text = Kit.fit(bb, "… " .. text, px, cm.w) end
+                Kit.text_left(bb, x + cm.x, y + top + (i - first + 0.5) * line_h, text, px, Kit.DARK)
+            end
+        else
+            for i = 1, math.min(#lines, max_lines) do
+                local text = lines[i]
+                if i == max_lines and #lines > max_lines then text = Kit.fit(bb, text .. " …", px, cm.w) end
+                Kit.text_left(bb, x + cm.x, y + cm.y + (i - 0.5) * line_h, text, px, Kit.DARK)
+            end
         end
         self._rects.comment = { x = x + cm.x, y = y + cm.y, w = cm.w, h = cm.h }
     end
