@@ -95,6 +95,16 @@ function Controller:_do_submit()
         local fresh = self.refresh and self.refresh()
         g:submitted(fresh and fresh.sgf or nil)
         if fresh and fresh.move_id then g.move_id = fresh.move_id end
+        -- Safety net: the server's record must show the move we chose. DGS's move
+        -- label format is not yet proven on the device, so say so loudly if it differs.
+        if fresh and fresh.sgf then
+            local last = g.model:state().last
+            if last and not payload.col and not last.pass then
+                g.message = "WARNING: you passed but the server shows a stone at the last move. Check the game."
+            elseif last and payload.col and (last.col ~= payload.col or last.row ~= payload.row) then
+                g.message = "WARNING: the server recorded a different move than the one you chose. Check the game."
+            end
+        end
     end
     self.busy = false
     changed(self)

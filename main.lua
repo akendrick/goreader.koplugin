@@ -12,6 +12,7 @@ local logger          = require("logger")
 local _               = require("gettext")
 
 local Booklist = require("goreader.book.booklist")
+local Env = require("goreader.app.env")
 local Prepare = require("goreader.book.prepare")
 local Gobooks = require("goreader.book.gobooks")
 
@@ -161,6 +162,15 @@ end
 -- ---------------------------------------------------------------------------
 
 function GOReader:addToMainMenu(menu_items)
+    local dgs_app, ogs_app
+    local function dgs_menu()
+        dgs_app = dgs_app or require("goreader.app.dgs_app").new()
+        return dgs_app:menu_items()
+    end
+    local function ogs_menu()
+        ogs_app = ogs_app or require("goreader.app.ogs_app").new()
+        return ogs_app:menu_items()
+    end
     menu_items.goreader = {
         text = _("GOReader"),
         sorting_hint = "main",
@@ -168,6 +178,14 @@ function GOReader:addToMainMenu(menu_items)
             {
                 text = _("Go books"),
                 callback = function() self:showBookList() end,
+            },
+            {
+                text = _("Dragon Go Server"),
+                sub_item_table_func = function() return dgs_menu().sub_item_table end,
+            },
+            {
+                text = _("OGS (test)"),
+                sub_item_table_func = function() return ogs_menu().sub_item_table end,
             },
             {
                 text = _("About this book"),
