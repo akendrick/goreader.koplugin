@@ -127,6 +127,24 @@ function Kit.wrap(bb, text, px, max_w, bold)
     return lines
 end
 
+--[[ Draw something upside-down (for a player sitting across the table).
+     `fn(tmp)` draws into a temporary buffer w x h with (0,0) at its top-left, as
+     if it were an ordinary strip; the result is rotated 180 degrees and copied
+     to (x, y). Hit areas drawn this way must be mirrored: see Kit.mirror_rect. ]]
+function Kit.flipped(bb, x, y, w, h, fn)
+    local tmp = Blitbuffer.new(w, h)
+    tmp:paintRect(0, 0, w, h, Kit.WHITE)
+    fn(tmp)
+    local rot = tmp:rotatedCopy(180)
+    bb:blitFrom(rot, math.floor(x), math.floor(y), 0, 0, w, h)
+    tmp:free(); rot:free()
+end
+
+-- A rectangle drawn in a flipped w x h region at (rx, ry), as it appears on screen
+function Kit.mirror_rect(region_x, region_y, region_w, region_h, rx, ry, rw, rh)
+    return region_x + region_w - (rx + rw), region_y + region_h - (ry + rh), rw, rh
+end
+
 -- ---------------------------------------------------------------------------
 -- Boxes and buttons
 -- ---------------------------------------------------------------------------

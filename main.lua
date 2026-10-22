@@ -176,6 +176,7 @@ function GOReader:_apps()
             dgs = require("goreader.app.dgs_app").new{ home = home },
             ogs = require("goreader.app.ogs_app").new{ home = home },
             review = require("goreader.app.review_app").new{ home = home },
+            sgf = require("goreader.app.sgf_app").new{ home = home },
         }
     end
     return self.apps
@@ -187,6 +188,7 @@ function GOReader:showHome()
     local apps = self:_apps()
     local function run(what, fn) return function() UIManager:close(self.home_menu); self.home_menu = nil; Env.safe(what, fn) end end
     local items = {
+        { text = "SGF Game", mandatory = "record / play", callback = run("sgf game", function() apps.sgf:open() end) },
         { text = "Saved games (review)", mandatory = "SGF", callback = run("saved games", function() apps.review:open_library() end) },
         { text = "Dragon Go Server", mandatory = "your games", callback = run("dragon go server", function() apps.dgs:open() end) },
         { text = "Watch OGS games", mandatory = "live", callback = run("ogs", function() apps.ogs:choose_filter() end) },
