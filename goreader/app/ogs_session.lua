@@ -16,8 +16,8 @@
         s:pump()                          -- call about once a second; returns number of frames handled
         s.ogs                             -- the OGS client (watch games, list games, chat)
 
-    Signs in as a GUEST: the anonymous token the website gives every visitor.
-    Watching and reading chat work; playing needs a real account (later).
+    Signs in as a GUEST (the anonymous token the website gives every visitor)
+    unless env.sign_in is given: then it is your own account, and you can play.
 --]]
 
 local json = require("goreader.services.json")
@@ -67,17 +67,28 @@ function Session:open()
     self.steps, self.last_error = {}, nil
     self.state = "connecting"
 
-    local token
-    local ok, why = self:_step("fetch sign-in token", function()
-        local body, err = self.env.http_get(Session.CONFIG_URL)
-        if not body then return false, "cannot reach online-go.com: " .. tostring(err) end
-        local cfg = json.decode(body)
-        if not cfg then return false, "the website sent something unreadable" end
-        local t, key = find_token(cfg)
-        if not t then return false, "no sign-in token in the website config" end
-        token = t
-        return true, "found under " .. key
-    end)
+    local token, user
+    local ok, why
+    if self.env.sign_in then
+        -- your own account: env.sign_in() -> { jwt, user } | nil, reason
+        ok, why = self:_step("sign in to your OGS account", function()
+            local a, err = self.env.sign_in()
+            if not a then return false, tostring(err) end
+            token, user = a.jwt, a.user
+            return true, "signed in as " .. tostring(a.user and a.user.username)
+        end)
+    else
+        ok, why = self:_step("fetch sign-in token", function()
+            local body, err = self.env.http_get(Session.CONFIG_URL)
+            if not body then return false, "cannot reach online-go.com: " .. tostring(err) end
+            local cfg = json.decode(body)
+            if not cfg then return false, "the website sent something unreadable" end
+            local t, key = find_token(cfg)
+            if not t then return false, "no sign-in token in the website config" end
+            token = t
+            return true, "found under " .. key
+        end)
+    end
     if not ok then self.state, self.last_error = "closed", why; return nil, why end
 
     local sock
@@ -106,7 +117,7 @@ function Session:open()
     self.ogs:connected()
 
     local me
-    ok, why = self:_step("sign in as guest", function()
+    ok, why = self:_step(user and "connect as you" or "sign in as guest", function()
         local done, result, errv
         self.ogs:authenticate(token, function(d, e) done, result, errv = true, d, e end)
         for _ = 1, 100 do
@@ -117,11 +128,14 @@ function Session:open()
         if not done then return false, "no answer from the server" end
         if not result then return false, (errv and (errv.message or errv.code)) or "refused" end
         me = result
-        return true, "guest id " .. tostring(result.id)
+        if user and result.id ~= user.id then return false, "the server signed in a different account" end
+        return true, (user and "id " or "guest id ") .. tostring(result.id)
     end)
     if not ok then self:close(); self.last_error = why; return nil, why end
 
     self.me = me
+    self.user = user
+    self.signed_in = user ~= nil
     self.token = token
     self.state = "open"
     return true

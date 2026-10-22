@@ -300,6 +300,41 @@ function OGS:accept_removed(game_id, stones_text, strict_seki)
 end
 
 -- ---------------------------------------------------------------------------
+-- Finding a game (automatch), as the website's "Quick match" does it
+-- ---------------------------------------------------------------------------
+
+OGS.SIZES = { "9x9", "13x13", "19x19" }
+OGS.SPEEDS = { "blitz", "rapid", "live", "correspondence" }
+
+--[[ The preferences the website sends with automatch/find_match.
+     opts: size ("9x9"|"13x13"|"19x19"), speed ("blitz"|"rapid"|"live"|"correspondence"),
+           system ("fischer"|"byoyomi", default fischer), flexible (also accept the
+           other clock system for live speeds, default true), lower, upper (rank
+           difference, default 3), handicap ("standard"|"disabled"|"enabled") ]]
+function OGS:automatch_prefs(opts)
+    opts = opts or {}
+    local size, speed = opts.size or "19x19", opts.speed or "rapid"
+    local system = opts.system or "fischer"
+    local options = { { size = size, speed = speed, system = system } }
+    if opts.flexible ~= false and speed ~= "correspondence" then
+        options[#options + 1] = { size = size, speed = speed, system = system == "fischer" and "byoyomi" or "fischer" }
+    end
+    self.match_counter = (self.match_counter or 0) + 1
+    local handicap = opts.handicap or "standard"
+    return {
+        uuid = string.format("goreader-%x-%x", self.now(), self.match_counter),
+        size_speed_options = options,
+        lower_rank_diff = opts.lower or 3, upper_rank_diff = opts.upper or 3,
+        rules = { condition = "required", value = "japanese" },
+        handicap = { condition = handicap == "standard" and "preferred" or "required",
+                     value = handicap == "disabled" and "disabled" or "enabled" },
+    }
+end
+
+function OGS:find_match(prefs) return self:send("automatch/find_match", prefs) end
+function OGS:cancel_match(uuid) return self:send("automatch/cancel", { uuid = uuid }) end
+
+-- ---------------------------------------------------------------------------
 -- Game lists
 -- ---------------------------------------------------------------------------
 
