@@ -6,8 +6,13 @@
         GridScreen:new{
             title = "Dragon Go Server", items = {
                 { id, title, subtitle, mine = bool, board = {size, board, last} } },
-            on_select = fn(item), on_list = fn(), on_reload = fn(), on_close = fn(),
+            on_select = fn(item), on_close = fn(),
+            buttons = { {id="list", label="List"}, {id="reload", label="Reload"} },   -- after Prev / page / Next
+            on_button = fn(id),                 (on_list / on_reload still work for those two)
+            cols = 2, rows = 3, compact = false, -- compact: smaller caption text
         }
+    An item's board may be a function returning the board: it is only called when the item is
+    first drawn, so a long list costs nothing until its page is shown.
 --]]
 
 local InputContainer = require("ui/widget/container/inputcontainer")
@@ -21,6 +26,7 @@ local BoardView      = require("goreader.ui.boardview")
 local Grid = InputContainer:extend{
     name = "goreader_grid", title = "", items = {}, cols = 2, rows = 3,
     page = 1, on_select = nil, on_list = nil, on_reload = nil, on_close = nil,
+    buttons = nil, on_button = nil, compact = false,
 }
 
 --[[ Pure layout. Returns { header, footer, cells = { {x,y,w,h, board = {x,y,w}, caption = {x,y,w,h}} ... }, per_page } ]]
@@ -62,6 +68,7 @@ function Grid:init()
     }
     self.lay = Grid.layout(self.sw, self.sh, self.cols, self.rows, Kit.dp)
     self._rects = { cells = {}, buttons = {} }
+    self.buttons = self.buttons or { { id = "list", label = "List" }, { id = "reload", label = "Reload" } }
 end
 
 function Grid:page_count() return math.max(1, math.ceil(#self.items / self.lay.per_page)) end
@@ -89,14 +96,19 @@ function Grid:_paint_cell(bb, x, y, cell, item)
     local thick = item.mine and 5 or 2
     Kit.border(bb, x + cell.x, y + cell.y, cell.w, cell.h, thick, Kit.BLACK)
     local b = item.board
+    if type(b) == "function" then
+        local ok, made = pcall(b)
+        b = ok and made or false
+        item.board = b
+    end
     if b then
         local lay = BoardView.layout(cell.board.w, b.size, { coords = false })
         BoardView.paint(bb, x + cell.board.x, y + cell.board.y, lay, b, {})
     end
     local c = cell.caption
-    local px = math.floor(c.h * 0.36)
-    Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.28, item.title or "", px, Kit.BLACK, true, c.w)
-    Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.74, item.subtitle or "", math.floor(px * 0.88), item.mine and Kit.BLACK or Kit.DARK, item.mine, c.w)
+    local px = math.floor(c.h * (self.compact and 0.28 or 0.36))
+    Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.28, item.title or "", px, Kit.BLACK, not self.compact, c.w)
+    Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.74, item.subtitle or "", math.floor(px * (self.compact and 1.0 or 0.88)), item.mine and Kit.BLACK or Kit.DARK, item.mine or self.compact, c.w)
 end
 
 function Grid:paintTo(bb, x, y)
@@ -128,9 +140,8 @@ function Grid:paintTo(bb, x, y)
         { "prev", "‹ Prev", (more and self.page > 1) and "normal" or "disabled" },
         { "page", self.page .. " / " .. self:page_count(), "disabled" },
         { "next", "Next ›", (more and self.page < self:page_count()) and "normal" or "disabled" },
-        { "list", "List", "normal" },
-        { "reload", "Reload", "normal" },
     }
+    for _, b in ipairs(self.buttons) do items[#items + 1] = { b.id, b.label, b.style or "normal" } end
     self._rects.buttons = Kit.button_row(bb, x + L.pad, y + f.y + Kit.dp(8), self.sw - 2 * L.pad, f.h - Kit.dp(16), items, Kit.dp(8))
 end
 
@@ -142,8 +153,11 @@ function Grid:onTap(_, ges)
         if b.enabled == false or b.id == "page" then return true end
         if b.id == "prev" then self:goto_page(self.page - 1)
         elseif b.id == "next" then self:goto_page(self.page + 1)
-        elseif b.id == "list" and self.on_list then self:_leave(self.on_list)
-        elseif b.id == "reload" and self.on_reload then self:_leave(self.on_reload) end
+        else
+            local fn = (self.on_button and function() self.on_button(b.id) end)
+                or (b.id == "list" and self.on_list) or (b.id == "reload" and self.on_reload)
+            if fn then self:_leave(fn) end
+        end
         return true
     end
     local cell = Kit.hit(self._rects.cells, p.x, p.y)

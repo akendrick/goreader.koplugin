@@ -30,10 +30,14 @@ function GOReader:init()
             category = "none", event = "OpenGOReader", title = _("Open GOReader"), general = true })
         Dispatcher:registerAction("goreader_books", {
             category = "none", event = "OpenGOReaderBooks", title = _("Open Go books"), general = true })
+        -- bind this to any gesture (Settings > Taps and gestures) to leave a Go book
+        Dispatcher:registerAction("goreader_exit_book", {
+            category = "none", event = "GOReaderExitBook", title = _("Go book: close / exit"), reader = true })
     end
     if self.ui.document and self.ui.link then self:_hook_links() end
     if self:_is_go_book() then
         self:_register_exit_zone()
+        self:_install_corner_intercept()
     elseif not self.ui.document then
         self:_run_pending()
     end
@@ -43,10 +47,46 @@ end
 -- Leaving a Go book: tap the top-right corner
 -- ---------------------------------------------------------------------------
 
--- Prepared Go books carry "(GOReader)" in their name
+-- Prepared Go books carry "(GOReader)" in their name, or live in the GOReader books folder
 function GOReader:_is_go_book()
     local doc = self.ui and self.ui.document
-    return doc and type(doc.file) == "string" and doc.file:find("(GOReader)", 1, true) ~= nil or false
+    if not (doc and type(doc.file) == "string") then return false end
+    return doc.file:find("(GOReader)", 1, true) ~= nil or doc.file:find("/GOReader/books/", 1, true) ~= nil
+end
+
+-- The top-right corner: where a tap leaves the book
+GOReader.CORNER = { x = 0.84, y = 0.07 }
+
+function GOReader:_in_corner(pos)
+    if type(pos) ~= "table" or not pos.x or not pos.y then return false end
+    local Screen = require("device").screen
+    return pos.x >= Screen:getWidth() * GOReader.CORNER.x and pos.y <= Screen:getHeight() * GOReader.CORNER.y
+end
+
+--[[ KOReader decides what a tap does by walking an ordered list of "touch zones";
+     the order depends on which plugin registered what, and other zones (gestures,
+     menu, links) can come first. Taking the tap in the reader's own gesture handler
+     does not depend on that order. ]]
+function GOReader:_install_corner_intercept()
+    local ui, plugin = self.ui, self
+    if ui._goreader_intercept then return end
+    local original = ui.onGesture
+    if type(original) ~= "function" then return end
+    ui._goreader_intercept = true
+    ui.onGesture = function(this, ev, ...)
+        if type(ev) == "table" and ev.ges == "tap" and plugin:_in_corner(ev.pos) then
+            logger.info("GOReader: corner tap, opening the exit dialog")
+            plugin:showExitDialog()
+            return true
+        end
+        return original(this, ev, ...)
+    end
+    logger.info("GOReader: exit corner installed")
+end
+
+function GOReader:onGOReaderExitBook()
+    self:showExitDialog()
+    return true
 end
 
 local EXIT_OVERRIDES = {
@@ -63,9 +103,13 @@ function GOReader:_register_exit_zone()
         overrides = EXIT_OVERRIDES,
         handler = function() self:showExitDialog(); return true end,
     } })
+    logger.info("GOReader: exit corner zone registered")
 end
 
 function GOReader:showExitDialog()
+    local now = os.time()
+    if self.exit_shown_at and now - self.exit_shown_at < 1 then return end     -- one tap, one dialog
+    self.exit_shown_at = now
     local ButtonDialog = require("ui/widget/buttondialog")
     local dialog
     local function choose(what)
@@ -359,6 +403,11 @@ end
 
 function GOReader:addToMainMenu(menu_items)
     local subs = {}
+    if self:_is_go_book() then                     -- inside a Go book: leaving it comes first
+        subs[#subs + 1] = { text = _("Close this book, back to the Go books list"), callback = function() self:leaveBook("books") end }
+        subs[#subs + 1] = { text = _("Close this book, back to GOReader"), callback = function() self:leaveBook("home") end }
+        subs[#subs + 1] = { text = _("Exit KOReader"), callback = function() self:leaveBook("quit") end }
+    end
     for _, e in ipairs(self:_entries()) do
         subs[#subs + 1] = { text = e.text, callback = function() Env.safe(e.what, e.run) end }
     end

@@ -31,7 +31,77 @@ function App:storage()
     return self._storage
 end
 
+-- Your saved games as a page of boards (about move 40), players' names and the final score
+App.GRID_MOVE = 40
+
 function App:open_library(up)
+    up = up or function() self:go_home() end
+    local storage = self:storage()
+    storage:ensure()
+    local moved = storage:import_dropped()
+    local lib = Library.new{ storage = storage }
+    lib:scan()
+    local page = lib:page(1, 1000, { sort = "recent", filter = self.filter })
+    if #page.items == 0 then
+        Env.info(self.filter ~= "" and ("No games match \"" .. self.filter .. "\".")
+            or ("No saved games yet.\nCopy .sgf files to:\n" .. storage.dirs.import))
+        self.filter, self.delete_mode, self.grid_page = "", false, 1
+        return up()
+    end
+    local GridScreen = require("goreader.ui.gridscreen")
+    local items = {}
+    for _, e in ipairs(page.items) do
+        local who = (Library.latin_only(e.black) ~= "" and Library.latin_only(e.black) or "?") .. " vs "
+            .. (Library.latin_only(e.white) ~= "" and Library.latin_only(e.white) or "?")
+        if e.black == "" and e.white == "" then who = e.title end
+        items[#items + 1] = {
+            id = e.path, entry = e, title = who,
+            subtitle = (e.result ~= "" and Library.latin_only(e.result) or "unfinished") .. "  ·  " .. e.size .. "x" .. e.size,
+            board = function() return self:thumbnail(e) end,
+        }
+    end
+    local delete = self.delete_mode
+    local screen
+    screen = GridScreen:new{
+        title = delete and "Tap a game to DELETE it" or (#items .. " saved games" .. (self.filter ~= "" and ("  ·  \"" .. self.filter .. "\"") or "")
+            .. (moved > 0 and ("  ·  " .. moved .. " imported") or "")),
+        items = items, cols = 3, rows = 3, compact = true, page = math.max(1, self.grid_page or 1),
+        buttons = {
+            { id = "search", label = "Search" },
+            { id = "delete", label = delete and "Done" or "Delete" },
+            { id = "list", label = "List" },
+        },
+        on_select = function(item)
+            self.grid_page = screen.page
+            if delete then return self:confirm_delete(item.entry, up) end
+            Env.safe("open game", function() self:open_game(item.entry, function() self:open_library(up) end) end)
+        end,
+        on_button = function(id)
+            self.grid_page = screen.page
+            if id == "search" then self:ask_filter(up)
+            elseif id == "delete" then self.delete_mode = not self.delete_mode; self:open_library(up)
+            elseif id == "list" then self:open_list(function() self:open_library(up) end) end
+        end,
+        on_close = function() self.delete_mode, self.grid_page = false, 1; up() end,
+    }
+    UIManager:show(screen)
+    UIManager:setDirty(nil, "full")
+end
+
+-- The board of a saved game at about move 40 (or its last move, if shorter)
+function App:thumbnail(entry)
+    local text = self:storage():read(entry.path)
+    local game = text and SGF.parse(text)
+    if not game then return nil end
+    local model = ReviewModel.new{ game = game }
+    model:last()
+    local total = model:state().move_number
+    if total > App.GRID_MOVE then model:goto_move(App.GRID_MOVE) end
+    local st = model:state()
+    return { size = st.size, board = st.board, last = st.last }
+end
+
+function App:open_list(up)
     up = up or function() self:go_home() end
     local storage = self:storage()
     storage:ensure()
@@ -70,10 +140,10 @@ function App:open_library(up)
             UIManager:close(menu)
             if item.action then
                 self.delete_mode = (item.action == "delete")
-                return self:open_library(up)
+                return self:open_list(up)
             end
             if self.delete_mode then return self:confirm_delete(item.entry, up) end
-            Env.safe("open game", function() self:open_game(item.entry, function() self:open_library(up) end) end)
+            Env.safe("open game", function() self:open_game(item.entry, function() self:open_list(up) end) end)
         end,
         onMenuHold = function(_, item) self:game_options(menu, item.entry, up) end,
         close_callback = function() UIManager:close(menu); self.delete_mode = false; up() end,
