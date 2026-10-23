@@ -61,7 +61,18 @@ end
 
 -- "M12,11V445M444,11V445M11,12H445" -> list of { x1, y1, x2, y2 }
 -- Absolute M, L, H, V and Z only (all the books use).
+-- The same board lines appear in hundreds of diagrams: parse each distinct path once.
+-- (The lists are shared and must not be changed.)
+local segment_cache, segment_cache_n = {}, 0
 function Gobooks.path_segments(d)
+    local cached = segment_cache[d]
+    if cached then return cached end
+    local segs = Gobooks.parse_path(d)
+    if #d < 4000 and segment_cache_n < 200 then segment_cache[d] = segs; segment_cache_n = segment_cache_n + 1 end
+    return segs
+end
+
+function Gobooks.parse_path(d)
     local segs = {}
     local x, y, sx, sy = 0, 0, 0, 0
     for cmd, args in d:gmatch("([MLHVZmlhvz])([^MLHVZmlhvz]*)") do
@@ -460,8 +471,16 @@ end
 -- A plain SVG KOReader can draw (no <use>, <defs> or classes)
 -- ---------------------------------------------------------------------------
 
+local fmt_cache = {}
 local function fmt(n)
-    local s = string.format("%.3f", n):gsub("0+$", ""):gsub("%.$", "")
+    local s = fmt_cache[n]
+    if s then return s end
+    if n == math.floor(n) and n > -1e9 and n < 1e9 then
+        s = string.format("%d", n)
+    else
+        s = string.format("%.3f", n):gsub("0+$", ""):gsub("%.$", "")
+    end
+    fmt_cache[n] = s
     return s
 end
 
