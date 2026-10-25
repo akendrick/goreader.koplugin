@@ -22,6 +22,7 @@ local Play    = require("goreader.core.ogsplay")
 local OGSGame = require("goreader.core.ogsgame")
 local Chat    = require("goreader.core.chat")
 local Last    = require("goreader.ui.lastmove")
+local QM      = require("goreader.core.quick_messages")
 
 local Controller = {}
 Controller.__index = Controller
@@ -33,7 +34,9 @@ local function wall_clock()
     return os.time()
 end
 
-local QM = require("goreader.core.quick_messages")
+-- After the server has sent our move back, buttons stay ignored this much longer: the slow screen
+-- is still catching up, and a second tap meant for CONFIRM MOVE must not land on the buttons beneath it
+Controller.AFTER_ECHO_SECONDS = 1
 
 -- One-tap chat messages (a person types slowly on e-ink): your own list, from Settings
 Controller.QUICK_REPLIES = QM.DEFAULTS
@@ -83,6 +86,7 @@ function Controller:_event(name, data)
     elseif name == "chat" then
         self.chat_dirty = true                             -- the chat strip can wait a little
     end
+    if name == "move" and self.sending then self.ignore_until = self.clock() + Controller.AFTER_ECHO_SECONDS end
     if name == "move" or name == "loaded" or name == "phase" then self.sending = false end
     if name == "move" or name == "phase" then self.message = nil end
     if name == "error" then
@@ -309,13 +313,12 @@ function Controller:chat_menu()
     end)
 end
 
--- For two seconds after CONFIRM MOVE every button on the screen is ignored: on a slow screen a
--- second tap meant for CONFIRM MOVE would otherwise land on the buttons that appear beneath it.
-Controller.IGNORE_SECONDS = 2
-
+-- From CONFIRM MOVE until the server has sent the move back, and for a second after that, every
+-- button is ignored (a second tap meant for CONFIRM MOVE must not land on the buttons that appear
+-- beneath it). Reload always works: it is the way out if the move never comes back.
 function Controller:button(id)
     local play = self.play
-    if self.ignore_until and self.clock() < self.ignore_until then return end
+    if id ~= "reload" and (self.sending or (self.ignore_until and self.clock() < self.ignore_until)) then return end
     self.message = nil
     if id == "chat" then
         self:chat_menu()
@@ -326,7 +329,7 @@ function Controller:button(id)
         play:cancel_stage()
     elseif id == "confirm" then
         local ok, err = play:confirm()
-        if ok then self.sending = true; self.ignore_until = self.clock() + Controller.IGNORE_SECONDS
+        if ok then self.sending = true
         else self.message = REASONS[err] or ("Could not send the move (" .. tostring(err) .. ")") end
     elseif id == "pass" then
         local ok, why = play:stage_pass()
