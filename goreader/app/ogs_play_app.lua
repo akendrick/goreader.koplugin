@@ -237,6 +237,7 @@ function App:play(session, game_id, title, up)
     local ctl = Controller.new{
         session = session, game_id = game_id, title = title, show_text = Env.show_text,
         refresh_every = Env.settings():get("view.ogs_refresh_every"),
+        quick_replies = Env.settings():get("ogs.quick_replies"),
         choose = Env.choice_dialog,
         ask_text = function(t, initial, ok_label, cb) Env.text_dialog(t, initial, ok_label, cb, false) end,
     }

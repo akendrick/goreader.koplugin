@@ -116,7 +116,8 @@ function App:watch(session, game, up)
     up = up or function() self:go_home() end
     local title = (game.black and game.black.username or "?") .. " vs " .. (game.white and game.white.username or "?")
     local ctl = Controller.new{ session = session, game_id = game.id, title = title,
-                                show_text = Env.show_text, refresh_every = Env.settings():get("view.ogs_refresh_every") }
+                                show_text = Env.show_text, refresh_every = Env.settings():get("view.ogs_refresh_every"),
+                                quick_replies = Env.settings():get("ogs.quick_replies") }
     ctl:open()
     local screen = GameScreen:new{ controller = ctl, on_close = up }
     ctl.on_change = function() screen:update() end

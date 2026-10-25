@@ -26,12 +26,10 @@ local Last    = require("goreader.ui.lastmove")
 local Controller = {}
 Controller.__index = Controller
 
--- One-tap chat replies (a person types slowly on e-ink)
-Controller.QUICK_REPLIES = {
-    { "hi", "Hello, have fun!" }, { "gl", "Good luck!" }, { "thx", "Thanks!" },
-    { "gg", "gg, thank you for the game" }, { "wait", "One moment please" },
-    { "ok", "OK" }, { "slow", "Sorry, my e-ink screen is slow" },
-}
+local QM = require("goreader.core.quick_messages")
+
+-- One-tap chat messages (a person types slowly on e-ink): your own list, from Settings
+Controller.QUICK_REPLIES = QM.DEFAULTS
 
 local REASONS = {
     occupied = "That point is taken.", suicide = "Not allowed: no liberties.",
@@ -52,6 +50,7 @@ function Controller.new(opts)
         session = assert(opts.session), game_id = assert(opts.game_id),
         title = opts.title, show_text = opts.show_text or function() end,
         choose = opts.choose or function() end, ask_text = opts.ask_text or function() end,
+        quick_replies = opts.quick_replies or QM.DEFAULTS, guard_until = 0,
         message = nil, sending = false, asked_undo = false,
         now = opts.now or os.time, live_clocks = false, region_refresh = true, refresh_every = opts.refresh_every or 10, moves_since_full = 0, want_full = false, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
         on_change = function() end, closed = false,
@@ -220,16 +219,15 @@ function Controller:state()
 
     local row
     if player and g.phase == "play" then
-        row = { { id = "pass", label = "Pass", enabled = play:can_move() }, chat_button,
-                { id = "undo", label = "Undo", enabled = g:move_count() > 0 },
-                { id = "resign", label = "Resign" }, { id = "reload", label = "Reload" } }
+        -- Resign is far from the right-hand side where CONFIRM MOVE was: a second, impatient tap
+        -- on a slow screen lands on Reload or Chat, not on Resign. Chat is the last button.
+        row = { { id = "resign", label = "Resign" }, { id = "undo", label = "Undo", enabled = g:move_count() > 0 },
+                { id = "pass", label = "Pass", enabled = play:can_move() }, { id = "reload", label = "Reload" }, chat_button }
     elseif player and g.phase == "stone removal" then
-        row = { { id = "accept", label = "Accept", style = "primary" }, chat_button, { id = "resign", label = "Resign" },
-                { id = "reload", label = "Reload" } }
-    elseif player then
-        row = { chat_button, { id = "reload", label = "Reload" } }
+        row = { { id = "resign", label = "Resign" }, { id = "accept", label = "Accept", style = "primary" },
+                { id = "reload", label = "Reload" }, chat_button }
     else
-        row = { chat_button, { id = "reload", label = "Reload" } }
+        row = { { id = "reload", label = "Reload" }, chat_button }
     end
     st.bottom.rows = { row }
     return st
@@ -280,7 +278,7 @@ function Controller:chat_menu()
     end
     local choices = { { "read", "Read the chat" } }
     if self.play.me and self.session.signed_in then
-        for _, q in ipairs(Controller.QUICK_REPLIES) do choices[#choices + 1] = q end
+        for i, text in ipairs(self.quick_replies) do choices[#choices + 1] = { "q" .. i, text } end
         choices[#choices + 1] = { "type", "Type a message…" }
     end
     choices[#choices + 1] = { "close", "Close" }
@@ -296,15 +294,22 @@ function Controller:chat_menu()
             end)
             return
         elseif id ~= "close" then
-            for _, q in ipairs(Controller.QUICK_REPLIES) do if q[1] == id then self:say(q[2]) end end
+            local n = tonumber(id:match("^q(%d+)$"))
+            if n and self.quick_replies[n] then self:say(self.quick_replies[n]) end
         end
         self.dirty = true
         self.on_change()
     end)
 end
 
+-- For a moment after a move is sent, the buttons that give up or take back (Resign, Undo, Pass) are
+-- ignored: on a slow screen a second tap meant for CONFIRM MOVE must not land on one of them.
+Controller.GUARD_SECONDS = 3
+local GUARDED = { resign = true, undo = true, pass = true, accept = true }
+
 function Controller:button(id)
     local play = self.play
+    if GUARDED[id] and (self.sending or self.now() < self.guard_until) then return end
     self.message = nil
     if id == "chat" then
         self:chat_menu()
@@ -315,7 +320,7 @@ function Controller:button(id)
         play:cancel_stage()
     elseif id == "confirm" then
         local ok, err = play:confirm()
-        if ok then self.sending = true
+        if ok then self.sending = true; self.guard_until = self.now() + Controller.GUARD_SECONDS
         else self.message = REASONS[err] or ("Could not send the move (" .. tostring(err) .. ")") end
     elseif id == "pass" then
         local ok, why = play:stage_pass()

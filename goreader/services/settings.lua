@@ -11,6 +11,7 @@
 --]]
 
 local json = require("goreader.services.json")
+local QM   = require("goreader.core.quick_messages")
 
 local Settings = {}
 Settings.__index = Settings
@@ -48,6 +49,7 @@ Settings.SCHEMA = {
     ["ogs.chat"]         = { default = true,     check = is_bool },
     ["view.ogs_refresh_every"] = { default = 10, check = int_between(0, 100) },
     ["ogs.muted"]        = { default = {},       check = name_list },
+    ["ogs.quick_replies"] = { default = QM.DEFAULTS, check = QM.valid_list },
     ["remote.url"]       = { default = "",       check = function(v) return type(v) == "string" and #v <= 200 and (v == "" or v:match("^https://")) ~= nil end },
 }
 
