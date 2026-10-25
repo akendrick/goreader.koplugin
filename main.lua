@@ -345,6 +345,7 @@ function GOReader:_apps()
             review = require("goreader.app.review_app").new{ home = home },
             sgf = require("goreader.app.sgf_app").new{ home = home },
             ogsplay = require("goreader.app.ogs_play_app").new{ home = home },
+            vs = require("goreader.app.vs_app").new{ home = home },
         }
     end
     return self.apps
@@ -355,6 +356,7 @@ function GOReader:_entries()
     local apps = self:_apps()
     return {
         { text = "SGF Game", mandatory = "record / play", what = "sgf game", run = function() apps.sgf:open() end },
+        { text = "Play the computer", mandatory = "GNU Go", what = "play the computer", run = function() apps.vs:open() end },
         { text = "Saved games (review)", mandatory = "SGF", what = "saved games", run = function() apps.review:open_library() end },
         { text = "Dragon Go Server", mandatory = "your games", what = "dragon go server", run = function() apps.dgs:open() end },
         { text = "Play on OGS", mandatory = "your account", what = "play on ogs", run = function() apps.ogsplay:open() end },
