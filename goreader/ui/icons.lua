@@ -163,6 +163,23 @@ PICTURES.chat = function(d)
     for _, x in ipairs({ 30, 50, 70 }) do bb:paintCircle(math.floor(u(x)), math.floor(u(40, true)), math.floor(u(6, nil, true)), Kit.BLACK) end
 end
 
+PICTURES.refresh = function(d)     -- a circular arrow (screen refresh)
+    local bb, u, w = d.bb, d.u, d.w
+    local cx, cy, r = u(50), u(50, true), u(34, nil, true)
+    local prev
+    for deg = -60, 230, 6 do
+        local a = math.rad(deg)
+        local x, y = cx + r * math.cos(a), cy + r * math.sin(a)
+        if prev then line(bb, prev[1], prev[2], x, y, w + 2, Kit.BLACK) end
+        prev = { x, y }
+    end
+    -- the arrow head at the open end
+    local a = math.rad(-60)
+    local hx, hy = cx + r * math.cos(a), cy + r * math.sin(a)
+    line(bb, hx, hy, hx + u(22, nil, true), hy - u(2, nil, true), w + 2, Kit.BLACK)
+    line(bb, hx, hy, hx + u(2, nil, true), hy + u(22, nil, true), w + 2, Kit.BLACK)
+end
+
 Icons.NAMES = {}
 for name in pairs(PICTURES) do Icons.NAMES[#Icons.NAMES + 1] = name end
 table.sort(Icons.NAMES)

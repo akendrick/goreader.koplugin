@@ -147,6 +147,25 @@ function Env.show_wifi_networks()
     UIManager:show(require("ui/widget/networksetting"):new{ network_list = list })
 end
 
+--[[ "Full screen refresh every N moves" for OGS games (a setting, 0 to 100): moves normally refresh
+     only what changed; every Nth one is a full flashing refresh to clear ghosting.
+     1 = every move, 0 = never (except when a game loads or changes phase). ]]
+function Env.set_refresh_every()
+    local s = Env.settings()
+    local current = s:get("view.ogs_refresh_every")
+    Env.text_dialog("Full refresh every how many moves?\n(1 = every move, 0 = never)", tostring(current), "Save", function(text)
+        if text == nil then return end
+        local n = tonumber((text:gsub("%s+", "")))
+        if not n or n ~= math.floor(n) or n < 0 or n > 100 then
+            Env.info("Enter a whole number from 0 to 100.")
+            return
+        end
+        s:set("view.ogs_refresh_every", n); s:save()
+        Env.info(n == 0 and "Moves will not do a full refresh." or (n == 1 and "Every move will do a full refresh."
+            or ("A full refresh every " .. n .. " moves.")), 3)
+    end)
+end
+
 function Env.info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end

@@ -112,18 +112,102 @@ function GameScreen:init()
     self:_schedule_tick()
 end
 
+-- A stable text form of a value, to see whether something changed between two states
+local function ser(v)
+    local t = type(v)
+    if t ~= "table" then return tostring(v) end
+    local keys = {}
+    for k in pairs(v) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local out = {}
+    for _, k in ipairs(keys) do out[#out + 1] = tostring(k) .. "=" .. ser(v[k]) end
+    return "{" .. table.concat(out, ",") .. "}"
+end
+
+--[[ What part of the screen differs between two drawn states: a list of { x, y, w, h }
+     (empty when nothing visible changed), or nil when the layout changed and the whole
+     screen should be refreshed. Used for moves: only the points that changed on the
+     board (the new stone, captures, the move marker), the bars and the text that
+     changed are refreshed, not the whole screen. ]]
+function GameScreen.changed_regions(prev, st, old_lay, lay)
+    if not (prev and st and old_lay and lay and prev.board and st.board) then return nil end
+    local a, b, ob, nb = prev.board, st.board, old_lay.board, lay.board
+    if a.size ~= b.size or ob.x ~= nb.x or ob.y ~= nb.y or ob.w ~= nb.w or ob.h ~= nb.h then return nil end
+    if (prev.bottom or {}).kind ~= (st.bottom or {}).kind or #((prev.bottom or {}).rows or {}) ~= #((st.bottom or {}).rows or {}) then return nil end
+    local out = {}
+    local function add(x, y, w, h) out[#out + 1] = { x = math.floor(x), y = math.floor(y), w = math.ceil(w), h = math.ceil(h) } end
+
+    -- the board
+    local size = b.size
+    local minc, minr, maxc, maxr
+    local function touch(c, r)
+        if not c then return end
+        minc = minc and math.min(minc, c) or c; maxc = maxc and math.max(maxc, c) or c
+        minr = minr and math.min(minr, r) or r; maxr = maxr and math.max(maxr, r) or r
+    end
+    for r = 1, size do
+        local ra, rb = a.board[r] or {}, b.board[r] or {}
+        for c = 1, size do
+            if (ra[c] or false) ~= (rb[c] or false) then touch(c, r) end
+        end
+    end
+    if ser(a.last) ~= ser(b.last) then
+        if a.last and a.last.col then touch(a.last.col, a.last.row) end
+        if b.last and b.last.col then touch(b.last.col, b.last.row) end
+    end
+    local overlays = function(x) return ser({ x.marks, x.variations, x.candidates, x.dead, x.territory, x.focus, x.pending }) end
+    if overlays(a) ~= overlays(b) then
+        add(nb.x, nb.y, nb.w, nb.h)                                   -- letters, counting marks: the whole board
+    elseif minc then
+        local cell = nb.lay.cell
+        local x1, y1 = BoardView.px(nb.lay, minc, minr)
+        local x2, y2 = BoardView.px(nb.lay, maxc, maxr)
+        local m = math.ceil(cell * 0.75)
+        local left, top = math.max(nb.x, nb.x + x1 - m), math.max(nb.y, nb.y + y1 - m)
+        local right, bottom = math.min(nb.x + nb.w, nb.x + x2 + m), math.min(nb.y + nb.h, nb.y + y2 + m)
+        add(left, top, right - left, bottom - top)
+    end
+
+    -- the bars and the text
+    if prev.title ~= st.title or prev.counter ~= st.counter then add(lay.header.x, lay.header.y, lay.header.w, lay.header.h) end
+    if ser({ prev.black, prev.white, prev.to_move }) ~= ser({ st.black, st.white, st.to_move }) then
+        add(lay.players.x, lay.players.y, lay.players.w, lay.players.h)
+    end
+    if prev.status ~= st.status or prev.busy ~= st.busy then
+        local r = lay.status or (lay.confirm and lay.confirm.prompt)
+        if r then add(r.x, r.y, r.w, r.h) end
+    end
+    if prev.comment ~= st.comment then add(lay.comment.x, lay.comment.y, lay.comment.w, lay.comment.h) end
+    if ser(prev.bottom) ~= ser(st.bottom) then
+        if lay.confirm then add(lay.confirm.x, lay.confirm.y, lay.confirm.w, lay.confirm.h) end
+        add(0, lay.rows.band_y, lay.sw, lay.sh - lay.rows.band_y)
+    end
+    return out
+end
+
 function GameScreen:update(no_refresh, mode)
     local t0 = os.clock()
+    local prev_st, prev_lay = self.st, self.lay
     self.st = self.controller:state()
     self.lay = GameScreen.layout(self.sw, self.sh, self.st, Kit.dp)
     note_slow("preparing the screen (state)", t0, 100)
     if not no_refresh then
-        -- a controller may ask for a full (flashing, clean) refresh for what just happened, e.g. a move
+        -- a controller may ask for a full (flashing, clean) refresh for what just happened
         local wanted = self.controller.take_refresh_mode and self.controller:take_refresh_mode()
-        local use = mode or wanted or "ui"
         local ok, logger = pcall(require, "logger")
-        if ok and logger and use == "full" then logger.info("GOReader: full refresh requested") end
-        UIManager:setDirty(self, use)
+        if mode or wanted == "full" or not self.controller.region_refresh then
+            local use = mode or wanted or "ui"
+            if ok and logger and use == "full" then logger.info("GOReader: full refresh requested") end
+            UIManager:setDirty(self, use)
+        else
+            -- partial refresh of just what changed
+            local regions = GameScreen.changed_regions(prev_st, self.st, prev_lay, self.lay)
+            if regions == nil then
+                UIManager:setDirty(self, "ui")
+            else
+                for _, r in ipairs(regions) do UIManager:setDirty(self, "ui", Geom:new{ x = r.x, y = r.y, w = r.w, h = r.h }) end
+            end
+        end
     end
 end
 
@@ -220,7 +304,7 @@ function GameScreen:_paint(bb, x, y)
     self:_paint_player(bb, x + half, y + lay.players.y, half, lay.players.h, st.white, "W", st.to_move == "W", st.turn_fill)
     Kit.fill(bb, x, y + lay.players.y + lay.players.h - 1, self.sw, 1, Kit.LIGHT)
 
-    BoardView.paint(bb, x + lay.board.x, y + lay.board.y, lay.board.lay, st.board, { show_numbers = st.show_numbers })
+    BoardView.paint(bb, x + lay.board.x, y + lay.board.y, lay.board.lay, st.board, { show_numbers = st.show_numbers, sprites = true })
 
     if lay.confirm then
         local c = lay.confirm

@@ -96,7 +96,39 @@ local function mark(bb, cx, cy, r, kind, on_black, color)
     end
 end
 
---[[ opts: show_numbers (bool). Returns nothing. (x, y) is the top-left of the board area. ]]
+-- Stones on ordinary points are the same picture every time: draw one small image (the stone on
+-- the board surface with the two grid lines through it) once and copy it, which is much faster
+-- than drawing circles for every stone of a 200-move game. Points on the edge of the board have
+-- fewer grid lines and are drawn the long way.
+local sprites = {}
+
+local function stone_sprite(bb, lay, colour, ink, board_bg, thick)
+    local r = lay.r
+    local key = table.concat({ r, colour, tostring(ink.gray), tostring(board_bg.gray), thick,
+        math.max(1, math.floor(lay.cell / 22)) }, ":")
+    local sp = sprites[key]
+    if sp then return sp end
+    local ok, Blitbuffer = pcall(require, "ffi/blitbuffer")
+    if not ok or not Blitbuffer or not Blitbuffer.new then return nil end
+    local size = 2 * r + 3
+    local btype = bb.getType and bb:getType() or nil
+    local img = btype and Blitbuffer.new(size, size, btype) or Blitbuffer.new(size, size)
+    local c = r + 1
+    local gw = math.max(1, math.floor(lay.cell / 22))
+    img:paintRect(0, 0, size, size, board_bg)
+    img:paintRect(c - math.floor(gw / 2), 0, gw, size, ink)
+    img:paintRect(0, c - math.floor(gw / 2), size, gw, ink)
+    stone(img, c, c, r, colour, ink, thick)
+    -- a few of these are enough; drop the oldest when the board size or colours change a lot
+    local n = 0
+    for _ in pairs(sprites) do n = n + 1 end
+    if n > 12 then for k, v in pairs(sprites) do if v.free then v:free() end; sprites[k] = nil end end
+    sprites[key] = { img = img, c = c, size = size }
+    return sprites[key]
+end
+
+--[[ opts: show_numbers (bool), sprites (bool: copy stone images, for speed).
+     Returns nothing. (x, y) is the top-left of the board area. ]]
 function BoardView.paint(bb, x, y, lay, state, opts)
     opts = opts or {}
     local size, cell, r = lay.size, lay.cell, lay.r
@@ -144,6 +176,7 @@ function BoardView.paint(bb, x, y, lay, state, opts)
     end
 
     -- stones
+    local territory_here = state.territory
     local thick = math.max(2, math.floor(r * 0.12))
     for row = 1, size do
         local line = state.board[row]
@@ -152,7 +185,16 @@ function BoardView.paint(bb, x, y, lay, state, opts)
             if c then
                 local sx, sy = BoardView.px(lay, col, row)
                 local dead = state.dead and state.dead[col .. "," .. row]
-                stone(bb, x + sx, y + sy, r, c, dead and Kit.MID or ink, thick)
+                local drawn = false
+                if opts.sprites and not dead and col > 1 and col < size and row > 1 and row < size
+                   and (not territory_here or not territory_here[col .. "," .. row]) then
+                    local sp = stone_sprite(bb, lay, c, ink, board_bg, thick)
+                    if sp then
+                        bb:blitFrom(sp.img, x + sx - sp.c, y + sy - sp.c, 0, 0, sp.size, sp.size)
+                        drawn = true
+                    end
+                end
+                if not drawn then stone(bb, x + sx, y + sy, r, c, dead and Kit.MID or ink, thick) end
                 if dead then                                    -- X over a dead stone
                     mark(bb, x + sx, y + sy, r, "MA", c == "B", Kit.BLACK)
                 end

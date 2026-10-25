@@ -53,7 +53,7 @@ function Controller.new(opts)
         title = opts.title, show_text = opts.show_text or function() end,
         choose = opts.choose or function() end, ask_text = opts.ask_text or function() end,
         message = nil, sending = false, asked_undo = false,
-        now = opts.now or os.time, live_clocks = opts.full_refresh ~= true, full_refresh = opts.full_refresh == true, want_full = false, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
+        now = opts.now or os.time, live_clocks = false, region_refresh = true, refresh_every = opts.refresh_every or 10, moves_since_full = 0, want_full = false, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
         on_change = function() end, closed = false,
     }, Controller)
     self.play = Play.new{
@@ -67,7 +67,13 @@ function Controller:_event(name, data)
     if name == "loaded" or name == "move" or name == "phase" or name == "clock"
        or name == "error" or name == "resync" or name == "removed_stones" or name == "undo_requested" then
         self.dirty = true                                  -- a move (and its clocks) changes the board now
-        if name == "loaded" or name == "move" or name == "phase" or name == "removed_stones" then self.want_full = true end
+        -- a new game or a change of phase starts clean; moves refresh only what changed, with a full refresh
+        -- every `refresh_every` moves to clear the ghosting (1 = every move, 0 = never for moves)
+        if name == "loaded" or name == "phase" or name == "removed_stones" then self.want_full = true end
+        if name == "move" then
+            self.moves_since_full = self.moves_since_full + 1
+            if self.refresh_every >= 1 and self.moves_since_full >= self.refresh_every then self.want_full = true end
+        end
     elseif name == "chat" then
         self.chat_dirty = true                             -- the chat strip can wait a little
     end
@@ -80,13 +86,13 @@ function Controller:_event(name, data)
     end
 end
 
---[[ How the screen should refresh for what just changed: a move, a new game or a change of
-     phase get a full (flashing, clean) refresh when that is switched on; everything else the
-     quick partial one. The strip of live clocks is not refreshed on its own then: the clocks
-     come up to date with the next move. ]]
+--[[ How the screen should refresh for what just happened: "full" (a flashing, clean refresh)
+     for a new game, a change of phase, and every `refresh_every` moves; otherwise nothing special
+     (the screen then refreshes only the part that changed). ]]
 function Controller:take_refresh_mode()
-    local want = self.want_full and self.full_refresh
+    local want = self.want_full
     self.want_full = false
+    if want then self.moves_since_full = 0 end
     return want and "full" or nil
 end
 

@@ -46,7 +46,7 @@ Settings.SCHEMA = {
     ["dgs.user"]         = { default = "",       check = short_string },
     ["ogs.user"]         = { default = "",       check = short_string },
     ["ogs.chat"]         = { default = true,     check = is_bool },
-    ["view.ogs_full_refresh"] = { default = true, check = is_bool },
+    ["view.ogs_refresh_every"] = { default = 10, check = int_between(0, 100) },
     ["ogs.muted"]        = { default = {},       check = name_list },
     ["remote.url"]       = { default = "",       check = function(v) return type(v) == "string" and #v <= 200 and (v == "" or v:match("^https://")) ~= nil end },
 }
