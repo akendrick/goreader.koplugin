@@ -104,7 +104,8 @@ local sprites = {}
 
 local function stone_sprite(bb, lay, colour, ink, board_bg, thick)
     local r = lay.r
-    local key = table.concat({ r, colour, tostring(ink.gray), tostring(board_bg.gray), thick,
+    -- only two looks exist: normal, and dimmed while a move is being confirmed
+    local key = table.concat({ r, colour, ink == Kit.BLACK and "n" or "d", thick,
         math.max(1, math.floor(lay.cell / 22)) }, ":")
     local sp = sprites[key]
     if sp then return sp end
@@ -122,7 +123,7 @@ local function stone_sprite(bb, lay, colour, ink, board_bg, thick)
     -- a few of these are enough; drop the oldest when the board size or colours change a lot
     local n = 0
     for _ in pairs(sprites) do n = n + 1 end
-    if n > 12 then for k, v in pairs(sprites) do if v.free then v:free() end; sprites[k] = nil end end
+    if n > 12 then for k, v in pairs(sprites) do if v.img and v.img.free then v.img:free() end; sprites[k] = nil end end
     sprites[key] = { img = img, c = c, size = size }
     return sprites[key]
 end
