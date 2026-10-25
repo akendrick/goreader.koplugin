@@ -96,7 +96,7 @@ function Controller:state()
         row = { { id = "resume", label = "Keep playing" }, { id = "count_done", label = "Done", style = "primary" } }
     elseif s.state == "over" then
         status = "Finished: " .. tostring(g:result() or "")
-        row = { { id = "delete", label = "Delete" } }
+        row = { { id = "exit", label = "Exit", style = "primary" }, { id = "delete", label = "Delete" } }
     elseif self.error then
         status = "The computer had a problem: " .. self.error
         row = { { id = "retry", label = "Try again", style = "primary" }, { id = "resign", label = "Resign" } }
@@ -150,6 +150,9 @@ function Controller:button(id)
             end
             self.on_change()
         end)
+    elseif id == "exit" then
+        self:autosave()
+        self.close()
     elseif id == "retry" then
         self.error = nil
         s:retry_engine()

@@ -81,7 +81,7 @@ function Controller:state()
     if lg.state == "scoring" then
         row = { { id = "resume", label = "Keep playing" }, { id = "count_done", label = "Done", style = "primary" }, { id = "info", label = "Info" } }
     elseif lg.state == "over" then
-        row = { { id = "info", label = "Info" }, { id = "export", label = "Saved" }, { id = "delete", label = "Delete" } }
+        row = { { id = "info", label = "Info" }, { id = "exit", label = "Exit", style = "primary" }, { id = "delete", label = "Delete" } }
     else
         row = {
             { id = "undo", label = "Undo", enabled = lg:move_count() > 0 }, { id = "pass", label = "Pass" },
@@ -130,6 +130,9 @@ function Controller:button(id)
             elseif c == "draw" then lg:set_result("0") end
             self:autosave(); self.on_change()
         end)
+    elseif id == "exit" then
+        self:autosave()
+        if self.close then self.close() end
     elseif id == "delete" then
         self:ask_delete()
     elseif id == "info" then
