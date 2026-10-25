@@ -414,10 +414,10 @@ function GOReader:_tree()
             { text = "Watch", icon = "eye", what = "watch ogs", run = function(up) apps.ogs:choose_filter(up) end },
             { text = "Chat", icon = "chat", what = "ogs chat", run = function(up) apps.ogs:listen_room(nil, up) end },
         } },
-        { text = "Dragon Go Server", icon = "mail", what = "dragon go server", run = function(up) apps.dgs:open(up) end },
+        { text = "Dragon Go Server", icon = "mail", what = "dragon go server", feature = "features.dgs", run = function(up) apps.dgs:open(up) end },
         { text = "Saved games", icon = "document", what = "saved games", run = function(up) apps.review:open_library(up) end },
         { text = "Go books", icon = "book", what = "books", run = function(up) self:showBookList(up) end },
-        { text = "Joseki", icon = "corner", what = "joseki", run = function(up) apps.joseki:open(up) end },
+        { text = "Joseki", icon = "corner", what = "joseki", feature = "features.joseki", run = function(up) apps.joseki:open(up) end },
         -- shelved for now (the code is kept): set shelved = false to bring the tile back
         { text = "Go problems", icon = "puzzle", what = "problems", shelved = true, run = function(up) apps.problems:open(up) end },
         { text = "Settings", icon = "gear", children = {
@@ -425,9 +425,17 @@ function GOReader:_tree()
             { text = "Screen refresh", icon = "refresh", what = "screen refresh", run = function(up) up(); Env.set_refresh_every() end },
             { text = "Button pause", icon = "pause", what = "button pause", run = function(up) up(); Env.set_button_pause() end },
             { text = "Quick messages", icon = "chat", what = "quick messages", run = function(up) apps.quick:open(up) end },
+            { text = "Optional features", icon = "switch", what = "optional features", run = function(up) up(); Env.set_features() end },
             { text = "Connection test", icon = "check", what = "ogs test", run = function(up) apps.ogs:connection_test(up) end },
         } },
     }
+end
+
+-- Is this entry shown? Not when shelved, nor when it belongs to an optional feature that is off
+function GOReader._offered(node)
+    if node.shelved then return false end
+    if node.feature and not Env.feature_on(node.feature) then return false end
+    return true
 end
 
 -- Show one level of the tree as tiles. `parent_up` returns to the level above (nil at the top).
@@ -436,7 +444,7 @@ function GOReader:showTiles(nodes, title, parent_up)
     local TileScreen = require("goreader.ui.tilescreen")
     local tiles = {}
     for _, n in ipairs(nodes) do
-        if not n.shelved then tiles[#tiles + 1] = { id = #tiles + 1, label = n.text, icon = n.icon, node = n } end
+        if GOReader._offered(n) then tiles[#tiles + 1] = { id = #tiles + 1, label = n.text, icon = n.icon, node = n } end
     end
     local function here() self:showTiles(nodes, title, parent_up) end
     local screen
@@ -489,8 +497,8 @@ function GOReader:addToMainMenu(menu_items)
     local function to_menu(nodes)
         local out = {}
         for _, n in ipairs(nodes) do
-            if n.shelved then
-                -- not offered for now
+            if not GOReader._offered(n) then
+                -- shelved, or an optional feature that is switched off
             elseif n.children then
                 out[#out + 1] = { text = n.text, sub_item_table = to_menu(n.children) }
             else
@@ -501,7 +509,15 @@ function GOReader:addToMainMenu(menu_items)
         return out
     end
     for _, item in ipairs(to_menu(self:_tree())) do subs[#subs + 1] = item end
-    menu_items.goreader = { text = _("GOReader"), sorting_hint = "main", sub_item_table = subs }
+    -- the function is asked again each time the entry is opened, so turning an optional feature on or
+    -- off in Settings shows at once; the table is the fallback
+    local function current()
+        local fresh = {}
+        if self:_is_go_book() then for i = 1, 3 do fresh[i] = subs[i] end end
+        for _, item in ipairs(to_menu(self:_tree())) do fresh[#fresh + 1] = item end
+        return fresh
+    end
+    menu_items.goreader = { text = _("GOReader"), sorting_hint = "main", sub_item_table = subs, sub_item_table_func = current }
     self:_put_menu_first()
 end
 

@@ -198,6 +198,39 @@ function Env.set_button_pause()
     show()
 end
 
+--[[ Optional parts of GOReader. Off until turned on here; when off they are not shown anywhere
+     (home tiles, KOReader menu). `Env.FEATURES` lists them in the order shown. ]]
+Env.FEATURES = {
+    { key = "features.joseki", label = "Joseki dictionary", note = "experimental beta feature" },
+    { key = "features.dgs",    label = "Dragon Go Server" },
+}
+
+function Env.feature_on(key)
+    local ok, s = pcall(Env.settings)
+    return ok and s and s:get(key) == true or false
+end
+
+function Env.feature_text(f)
+    return f.label .. (f.note and ("  (" .. f.note .. ")") or "") .. ":  " .. (Env.feature_on(f.key) and "ON" or "OFF")
+end
+
+function Env.set_features()
+    local s = Env.settings()
+    local function show()
+        local choices = {}
+        for i, f in ipairs(Env.FEATURES) do choices[#choices + 1] = { "f" .. i, Env.feature_text(f) } end
+        choices[#choices + 1] = { "done", "Done" }
+        Env.choice_dialog("Optional features\nTap one to turn it on or off. It then shows up on the home screen.", choices, function(id)
+            local n = tonumber(id:match("^f(%d+)$"))
+            local f = n and Env.FEATURES[n]
+            if not f then return end
+            s:set(f.key, not (s:get(f.key) == true)); s:save()
+            show()
+        end)
+    end
+    show()
+end
+
 function Env.info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end

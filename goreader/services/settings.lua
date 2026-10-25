@@ -51,6 +51,9 @@ Settings.SCHEMA = {
     ["ogs.chat"]         = { default = true,     check = is_bool },
     ["view.ogs_refresh_every"] = { default = 10, check = int_between(0, 100) },
     ["view.ogs_button_pause"] = { default = 1, check = half_seconds },
+    -- optional parts of GOReader, off until turned on in Settings > Optional features
+    ["features.dgs"]     = { default = false, check = is_bool },
+    ["features.joseki"]  = { default = false, check = is_bool },
     ["ogs.muted"]        = { default = {},       check = name_list },
     ["ogs.quick_replies"] = { default = QM.DEFAULTS, check = QM.valid_list },
     ["remote.url"]       = { default = "",       check = function(v) return type(v) == "string" and #v <= 200 and (v == "" or v:match("^https://")) ~= nil end },

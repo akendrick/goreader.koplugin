@@ -187,6 +187,13 @@ PICTURES.pause = function(d)       -- the button pause: two bars in a circle
     bb:paintRect(math.floor(u(54)), math.floor(u(30, true)), math.floor(u(11, nil, true)), math.floor(u(40, nil, true)), Kit.BLACK)
 end
 
+PICTURES.switch = function(d)      -- an on/off switch (optional features)
+    local bb, u, w, bg = d.bb, d.u, d.w, d.bg
+    Kit.border(bb, u(8), u(30, true), u(84, nil, true), u(40, nil, true), w, Kit.BLACK)
+    bb:paintCircle(math.floor(u(70)), math.floor(u(50, true)), math.floor(u(15, nil, true)), Kit.BLACK)
+    ring(bb, u(30), u(50, true), u(15, nil, true), math.max(2, math.floor(w * 0.8)), Kit.BLACK, bg)
+end
+
 Icons.NAMES = {}
 for name in pairs(PICTURES) do Icons.NAMES[#Icons.NAMES + 1] = name end
 table.sort(Icons.NAMES)
