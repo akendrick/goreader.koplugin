@@ -40,6 +40,28 @@ matches, annotate), `OGS_RESEARCH.md`, `GOREADER_PLAN.md`.
 Require as `require("goreader.core.game")` etc. Coordinates everywhere:
 `col 1..N` left to right, `row 1..N` top to bottom, colours `"B"` / `"W"`.
 
+## On the reader
+
+GOReader opens from KOReader's main menu (first entry) and shows a 4x4 grid of tiles. Play
+(SGF editor, vs Player, vs Computer), OGS (Play, Watch, Chat), Dragon Go Server, Saved games,
+Go books, Joseki and Settings. Every exit goes up one level.
+
+Settings (second-level tiles; values in `GOReader/settings.json`):
+
+* **Wi-Fi** opens the network list.
+* **Screen refresh** (`view.ogs_refresh_every`, 0-100, default 10): OGS games refresh only what
+  changed on a move, with a full flashing refresh every N moves (1 = every move, 0 = never).
+* **Button pause** (`view.ogs_button_pause`, off or 0.5-5 s, default 1): in a live OGS game the
+  buttons are ignored from CONFIRM MOVE until the server returns the move, and this long after.
+  Reload always works.
+* **Quick messages** (`ogs.quick_replies`): the one-tap OGS chat messages; create, edit, delete,
+  or go back to the standard set.
+* **Connection test**: a step-by-step report of reaching OGS.
+
+Files it reads or writes under `/mnt/onboard/GOReader`: `games/` (saved games, including Dragon Go
+Server games as `dgs-<opponent>-<id>.sgf`), `books/` (prepared Go books), `joseki/kjd.sgf`,
+`problems/`, `bin/gnugo`, `settings.json`, `secrets.json`, `dgs-index.json`, `bookcache.json`.
+
 ## Using it
 
 ```lua
