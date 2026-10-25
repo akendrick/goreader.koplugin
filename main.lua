@@ -346,6 +346,8 @@ function GOReader:_apps()
             sgf = require("goreader.app.sgf_app").new{ home = home },
             ogsplay = require("goreader.app.ogs_play_app").new{ home = home },
             vs = require("goreader.app.vs_app").new{ home = home },
+            joseki = require("goreader.app.joseki_app").new{ home = home },
+            problems = require("goreader.app.problems_app").new{ home = home },
         }
     end
     return self.apps
@@ -363,6 +365,8 @@ function GOReader:_entries()
         { text = "Watch OGS games", mandatory = "live", what = "ogs", run = function() apps.ogs:choose_filter() end },
         { text = "Go books", mandatory = "interactive", what = "books", run = function() self:showBookList() end },
         { text = "OGS chat room", mandatory = "read only", what = "ogs chat", run = function() apps.ogs:listen_room() end },
+        { text = "Joseki dictionary", mandatory = "Kogo's", what = "joseki", run = function() apps.joseki:open() end },
+        { text = "Go problems", mandatory = "tsumego", what = "problems", run = function() apps.problems:open() end },
         { text = "Wi-Fi networks", mandatory = "change / forget", what = "wi-fi", run = function() Env.show_wifi_networks() end },
         { text = "OGS connection test", mandatory = "", what = "ogs test", run = function() apps.ogs:connection_test() end },
     }
