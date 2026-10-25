@@ -13,6 +13,8 @@
         }
     An item's board may be a function returning the board: it is only called when the item is
     first drawn, so a long list costs nothing until its page is shown.
+    An item may carry a picture instead of a board: image = function(width, height) -> Blitbuffer | nil
+    (a book cover); when it gives nothing a plain book picture is drawn.
 --]]
 
 local InputContainer = require("ui/widget/container/inputcontainer")
@@ -22,6 +24,7 @@ local Geom           = require("ui/geometry")
 local Screen         = require("device").screen
 local Kit            = require("goreader.ui.kit")
 local BoardView      = require("goreader.ui.boardview")
+local Icons          = require("goreader.ui.icons")
 
 local Grid = InputContainer:extend{
     name = "goreader_grid", title = "", items = {}, cols = 2, rows = 3,
@@ -95,6 +98,24 @@ end
 function Grid:_paint_cell(bb, x, y, cell, item)
     local thick = item.mine and 5 or 2
     Kit.border(bb, x + cell.x, y + cell.y, cell.w, cell.h, thick, Kit.BLACK)
+    if item.image ~= nil then
+        local box = cell.board
+        local img = item._img
+        if img == nil then
+            local ok, made = pcall(item.image, box.w, box.w)
+            img = (ok and made) or false
+            item._img = img
+        end
+        if img then
+            local iw, ih = img:getWidth(), img:getHeight()
+            local x0, y0 = x + box.x + math.floor((box.w - iw) / 2), y + cell.board.y + math.floor((box.w - ih) / 2)
+            bb:blitFrom(img, x0, y0, 0, 0, iw, ih)
+            Kit.border(bb, x0, y0, iw, ih, 2, Kit.DARK)
+        else
+            local size = math.floor(box.w * 0.6)
+            Icons.draw(bb, "book", x + box.x + math.floor((box.w - size) / 2), y + box.y + math.floor((box.w - size) / 2), size, Kit.WHITE)
+        end
+    end
     local b = item.board
     if type(b) == "function" then
         local ok, made = pcall(b)

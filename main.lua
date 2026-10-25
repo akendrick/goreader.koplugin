@@ -296,8 +296,11 @@ function GOReader:showBookList(up)
     Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu(up) end)
 end
 
-function GOReader:_show_book_menu(up)
+function GOReader:_show_book_menu(up, rescan)
     up = up or function() self:showHome() end
+    if rescan then
+        local f = io.open(CACHE_FILE, "wb"); if f then f:write("{}"); f:close() end
+    end
     local ok, books = pcall(function() return self:_find_books() end)
     if not ok or type(books) ~= "table" then
         logger.warn("GOReader: library scan failed:", tostring(books))
@@ -311,6 +314,45 @@ function GOReader:_show_book_menu(up)
         up()
         return
     end
+    self:_show_book_grid(books, up)
+end
+
+-- The books as covers: the picture, the (shortened) name and the file size underneath
+function GOReader:_show_book_grid(books, up)
+    local GridScreen = require("goreader.ui.gridscreen")
+    local Covers = require("goreader.app.covers")
+    local items = {}
+    for _, b in ipairs(books) do
+        items[#items + 1] = {
+            id = b.path, book = b, title = b.title,
+            subtitle = Booklist.size_text(b.size) .. (b.prepared and "" or "  ·  prepares on first open"),
+            image = function(w, h) return Covers.get(b.source or b.path, w, h) end,
+        }
+    end
+    local screen
+    screen = GridScreen:new{
+        title = _("Go books"), items = items, cols = 3, rows = 3, compact = true, page = math.max(1, self.book_page or 1),
+        buttons = { { id = "rescan", label = _("Rescan") }, { id = "list", label = _("List") } },
+        on_select = function(item)
+            self.book_page = screen.page
+            Env.safe("open book", function() self:openBookEntry(item.book) end)
+        end,
+        on_button = function(id)
+            self.book_page = screen.page
+            if id == "rescan" then
+                Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu(up, true) end)
+            else
+                self:_show_book_list(books, function() self:_show_book_grid(books, up) end)
+            end
+        end,
+        on_close = function() self.book_page = 1; up() end,
+    }
+    UIManager:show(screen)
+    UIManager:setDirty(nil, "full")
+end
+
+-- The same books as a plain list (the pictures are skipped)
+function GOReader:_show_book_list(books, up)
     local Menu = require("ui/widget/menu")
     local menu
     menu = Menu:new{

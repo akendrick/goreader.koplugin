@@ -14,6 +14,7 @@ local SGF        = require("goreader.core.sgf")
 local ReviewModel = require("goreader.ui.review_model")
 local ReviewController = require("goreader.ui.review_controller")
 local Storage    = require("goreader.services.storage")
+local DgsStore   = require("goreader.core.dgs_store")
 local PlayOut    = require("goreader.ui.playout_controller")
 
 local App = {}
@@ -113,6 +114,42 @@ local function retrying(client, fn)
 end
 
 -- ---------------------------------------------------------------------------
+-- Your games, kept in the Saved Games folder
+-- ---------------------------------------------------------------------------
+
+function App:storage()
+    if not self._storage then
+        local lfs = require("libs/libkoreader-lfs")
+        self._storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+    end
+    return self._storage
+end
+
+function App:store()
+    if not self._store then self._store = DgsStore.new{ storage = self:storage() } end
+    return self._store
+end
+
+--[[ The SGF of a game: the saved copy when it is at the move DGS says it is at, otherwise
+     downloaded (and saved, with your notes carried over). `force` downloads regardless.
+     If the download fails but an older saved copy exists, that is used (second result "stale"). ]]
+function App:game_sgf(client, row, force)
+    local gid, move_id, opp = row.game.id, row.game.move_id, row.opponent
+    if not force then
+        local text = self:store():lookup(gid, move_id, opp)
+        if text then return text, "saved" end
+    end
+    local sgf, err = retrying(client, function() return client:download_sgf(gid) end)
+    if not sgf then
+        local old = self:store():read_local(opp, gid)
+        if old then return old, "stale" end
+        return nil, err
+    end
+    local saved = self:store():record(gid, move_id, opp, sgf)
+    return saved or sgf, "downloaded"
+end
+
+-- ---------------------------------------------------------------------------
 -- Your games
 -- ---------------------------------------------------------------------------
 
@@ -182,16 +219,12 @@ function App:show_grid(client, games, up)
     up = up or function() self:go_home() end
     local GridScreen = require("goreader.ui.gridscreen")
     local rows, turn_count = self:build_rows(client, games)
-    self.sgf_cache = self.sgf_cache or {}
+    local force = self.reload_all
+    self.reload_all = false
     local function build()
         local items = {}
         for _, row in ipairs(rows) do
-            local key = tostring(row.game.id) .. ":" .. tostring(row.game.move_id)
-            local sgf = self.sgf_cache[key]
-            if not sgf then
-                sgf = retrying(client, function() return client:download_sgf(row.game.id) end)
-                if sgf then self.sgf_cache[key] = sgf end
-            end
+            local sgf = self:game_sgf(client, row, force)
             local board, number
             if sgf then board, number = thumbnail(sgf) end
             items[#items + 1] = {
@@ -202,7 +235,7 @@ function App:show_grid(client, games, up)
         end
         return items
     end
-    Env.with_progress(string.format("Downloading your %d games…", #rows), function()
+    Env.with_progress(string.format("Checking your %d games…", #rows), function()
         local items = build()
         local screen
         screen = GridScreen:new{
@@ -211,7 +244,7 @@ function App:show_grid(client, games, up)
                 Env.safe("open game", function() self:open_game(client, item.row, function() self:open(up) end) end)
             end,
             on_list = function() self:show_list(client, games, up) end,
-            on_reload = function() self.sgf_cache = {}; self:open(up) end,
+            on_reload = function() self.reload_all = true; self:open(up) end,
             on_close = up,
         }
         UIManager:show(screen)
@@ -244,7 +277,7 @@ function App:open_game(client, row, back)
     back = back or function() self:go_home() end
     local gid = row.game.id
     Env.with_progress("Loading the game…", function()
-        local sgf, err = retrying(client, function() return client:download_sgf(gid) end)
+        local sgf, err = self:game_sgf(client, row)
         if not sgf then Env.info("Could not load the game (" .. tostring(err) .. ")."); back(); return end
         -- Nothing for you to do here: open it as a replay of the game
         if not row.my_turn then return self:open_replay(row, sgf, back) end
@@ -265,6 +298,7 @@ function App:open_game(client, row, back)
                 local move_id
                 local list = retrying(client, function() return client:running_games() end)
                 for _, g in ipairs(list or {}) do if g.id == gid then move_id = g.move_id end end
+                if move_id ~= nil then new_sgf = self:store():record(gid, move_id, row.opponent, new_sgf) or new_sgf end
                 return { sgf = new_sgf, move_id = move_id, my_color = row.my_color }
             end,
             schedule = function(fn) UIManager:scheduleIn(0.15, function() Env.safe("dragon go server", fn) end) end,
