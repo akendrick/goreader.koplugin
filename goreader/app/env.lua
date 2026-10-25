@@ -119,6 +119,34 @@ function Env.choice_dialog(title, choices, cb)
     UIManager:show(dialog)
 end
 
+--[[ The Wi-Fi network list, without having to know KOReader's long-press trick:
+     switches Wi-Fi on if needed, scans, and shows the list. Tap another network
+     to move to it, tap "disconnect" on the current one, tap "edit" on a saved one
+     to forget it or change its password. ]]
+function Env.show_wifi_networks()
+    local NetworkMgr = require("ui/network/manager")
+    if not NetworkMgr:isWifiOn() then
+        -- the same as pressing and holding "Wi-Fi connection": turns Wi-Fi on, then shows the list
+        NetworkMgr:toggleWifiOn(nil, true, true)
+        return
+    end
+    local info = InfoMessage:new{ text = "Scanning for networks…" }
+    UIManager:show(info)
+    UIManager:forceRePaint()
+    local list, err = NetworkMgr:getNetworkList()
+    if list ~= nil and #list == 0 then list, err = NetworkMgr:getNetworkList() end   -- the first scan is sometimes empty
+    UIManager:close(info)
+    if list == nil then
+        UIManager:show(InfoMessage:new{ text = "Could not scan for networks:\n" .. tostring(err) })
+        return
+    end
+    if #list == 0 then
+        UIManager:show(InfoMessage:new{ text = "No Wi-Fi networks found.\nTurn Wi-Fi off and on again, or move closer to the router." })
+        return
+    end
+    UIManager:show(require("ui/widget/networksetting"):new{ network_list = list })
+end
+
 function Env.info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end

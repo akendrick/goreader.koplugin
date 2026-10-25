@@ -361,6 +361,7 @@ function GOReader:_entries()
         { text = "Watch OGS games", mandatory = "live", what = "ogs", run = function() apps.ogs:choose_filter() end },
         { text = "Go books", mandatory = "interactive", what = "books", run = function() self:showBookList() end },
         { text = "OGS chat room", mandatory = "read only", what = "ogs chat", run = function() apps.ogs:listen_room() end },
+        { text = "Wi-Fi networks", mandatory = "change / forget", what = "wi-fi", run = function() Env.show_wifi_networks() end },
         { text = "OGS connection test", mandatory = "", what = "ogs test", run = function() apps.ogs:connection_test() end },
     }
 end
