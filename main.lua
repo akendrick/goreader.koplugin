@@ -375,7 +375,8 @@ function GOReader:_tree()
         { text = "Saved games", icon = "document", what = "saved games", run = function(up) apps.review:open_library(up) end },
         { text = "Go books", icon = "book", what = "books", run = function(up) self:showBookList(up) end },
         { text = "Joseki", icon = "corner", what = "joseki", run = function(up) apps.joseki:open(up) end },
-        { text = "Go problems", icon = "puzzle", what = "problems", run = function(up) apps.problems:open(up) end },
+        -- shelved for now (the code is kept): set shelved = false to bring the tile back
+        { text = "Go problems", icon = "puzzle", what = "problems", shelved = true, run = function(up) apps.problems:open(up) end },
         { text = "Settings", icon = "gear", children = {
             { text = "Wi-Fi", icon = "wifi", what = "wi-fi", run = function(up) up(); Env.show_wifi_networks() end },
             { text = "Connection test", icon = "check", what = "ogs test", run = function(up) apps.ogs:connection_test(up) end },
@@ -388,7 +389,9 @@ function GOReader:showTiles(nodes, title, parent_up)
     if self.home_screen then UIManager:close(self.home_screen); self.home_screen = nil end
     local TileScreen = require("goreader.ui.tilescreen")
     local tiles = {}
-    for i, n in ipairs(nodes) do tiles[i] = { id = i, label = n.text, icon = n.icon, node = n } end
+    for _, n in ipairs(nodes) do
+        if not n.shelved then tiles[#tiles + 1] = { id = #tiles + 1, label = n.text, icon = n.icon, node = n } end
+    end
     local function here() self:showTiles(nodes, title, parent_up) end
     local screen
     screen = TileScreen:new{
@@ -440,7 +443,9 @@ function GOReader:addToMainMenu(menu_items)
     local function to_menu(nodes)
         local out = {}
         for _, n in ipairs(nodes) do
-            if n.children then
+            if n.shelved then
+                -- not offered for now
+            elseif n.children then
                 out[#out + 1] = { text = n.text, sub_item_table = to_menu(n.children) }
             else
                 -- from the KOReader menu there is no screen to come back to: up closes nothing and does nothing
