@@ -1,132 +1,68 @@
-# GOReader (beta 0.1.0): core and device code
+# GOReader (beta) for KOReader
 
-UI-independent core of GOReader. Plain Lua (5.1 / LuaJIT compatible), no
-KOReader dependencies, so everything here runs and is tested on a desktop.
-The KOReader UI (screens, widgets) is a separate layer still to be written.
+**A Go (weiqi / baduk) plugin for KOReader, built for e-ink readers. Version 0.1.0-beta.**
 
-## Layout
+Mainly a Go playing and recording app, with online play on OGS and an interactive Go book reader.
+Written and tested on a Kobo Forma; other KOReader devices may work but are untested.
 
-```
-goreader/
-  core/
-    sgf.lua        parse / write / tree; turn detection incl. handicap and PL
-    rules.lua      legality, ko / superko, captures, undo, handicap, scoring
-    game.lua       a game in progress: rules + SGF kept in step, save / load
-    session.lua    play-vs-computer controller (turns, pass, resign, undo, scoring)
-    problems.lua   Go problems from SGF; right/wrong, hint, solution
-    joseki.lua     joseki dictionary navigation in any corner, sandbox
-    analysis.lua   AI review data in the SGF (GA/GV), mistakes, suggestions
-    ogsgame.lua    an OGS game: gamedata/move/clock/phase -> Game, clocks, result
-    ogsplay.lua    play or watch one OGS game: stage/confirm moves, resync, chat
-    chat.lua       game and room chat store: cleaning, mute, rate limit
-    room.lua       one OGS chat room: roster, topic, throttled redraws
-  engine/
-    gtp.lua        GTP scripts, response parsing, one-shot process runner
-    engines.lua    Pachi, GNU Go and generic adapters (same interface)
-    remote.lua     KataGo over https via server/katago_broker.py
-  services/
-    storage.lua    library outside the plugin folder, atomic writes, import
-    settings.lua   validated settings, separate token storage
-    library.lua    list / sort / filter / page saved games (9 per page)
-    json.lua       dependency-free JSON
-    dgs.lua        Dragon Go Server client (HTTP transport injected)
-    websocket.lua  RFC 6455 client in pure Lua (socket injected)
-    ogs.lua        OGS realtime protocol (frames, ids, ping, per-game events)
-```
+## What it does
 
-Outside the plugin: `server/` (KataGo broker, Python), `tools/` (engine
-matches, annotate), `OGS_RESEARCH.md`, `GOREADER_PLAN.md`.
+A home screen of tiles (open it from KOReader's main menu, first entry: **GOReader**):
 
-Require as `require("goreader.core.game")` etc. Coordinates everywhere:
-`col 1..N` left to right, `row 1..N` top to bottom, colours `"B"` / `"W"`.
+* **Play**
+  * **SGF editor**: record a game being played on a real board, saved after every move.
+  * **vs Player**: two people play face to face on the reader (Black's controls upside-down at the top).
+  * **vs Computer**: play GNU Go (9x9, 13x13, 19x19, handicap, 10 levels).
+* **OGS** (online-go.com)
+  * **Play**: sign in, see your games, find a game (quick match), play with a CONFIRM MOVE step, pass, resign, undo, count, one-tap chat messages.
+  * **Watch**: browse and watch live games (19x19 first), with chat.
+  * **Chat**: read a chat room.
+* **Saved games**: thumbnails of your games (about move 40, players and result), with a review screen: variations, comments, your own notes.
+* **Go books**: interactive diagrams in Go books (see below), shown as a grid of covers.
+* **Settings**: Wi-Fi networks, screen refresh, button pause, quick messages, optional features.
 
-## On the reader
+Optional features, off until switched on in **Settings > Optional features**:
+**Dragon Go Server** (your games, play with a confirm step) and the **Joseki dictionary** (experimental beta).
 
-GOReader opens from KOReader's main menu (first entry) and shows a 4x4 grid of tiles. Play
-(SGF editor, vs Player, vs Computer), OGS (Play, Watch, Chat), Dragon Go Server, Saved games,
-Go books, Joseki and Settings. Every exit goes up one level.
+## Go books
 
-Settings (second-level tiles; values in `GOReader/settings.json`):
+Tap a diagram in a Go book from gobooks.com and it becomes interactive: step through, play the moves,
+answer the quizzes. Books are found anywhere in the library by what is inside them. An original EPUB is
+turned into a prepared copy the first time you open it (your original is never changed); the first open
+takes a while and later opens are quick. In a book, tap the top-right corner, or open the menu, to leave it.
 
-* **Wi-Fi** opens the network list.
-* **Screen refresh** (`view.ogs_refresh_every`, 0-100, default 10): OGS games refresh only what
-  changed on a move, with a full flashing refresh every N moves (1 = every move, 0 = never).
-* **Button pause** (`view.ogs_button_pause`, off or 0.5-5 s, default 1): in a live OGS game the
-  buttons are ignored from CONFIRM MOVE until the server returns the move, and this long after.
-  Reload always works.
-* **Quick messages** (`ogs.quick_replies`): the one-tap OGS chat messages; create, edit, delete,
-  or go back to the standard set.
-* **Connection test**: a step-by-step report of reaching OGS.
+## Install
 
-Files it reads or writes under `/mnt/onboard/GOReader`: `games/` (saved games, including Dragon Go
-Server games as `dgs-<opponent>-<id>.sgf`), `books/` (prepared Go books), `joseki/kjd.sgf`,
-`problems/`, `bin/gnugo`, `settings.json`, `secrets.json`, `dgs-index.json`, `bookcache.json`.
+1. Download the zip from the latest release (or this repository) and copy the **`goreader.koplugin`** folder to
+   `koreader/plugins/` on your device.
+2. Restart KOReader. **GOReader** is the first entry in the main menu.
 
-## Using it
+On a Kobo the folder is `/mnt/onboard/.adds/koreader/plugins/goreader.koplugin`.
 
-```lua
-local Game    = require("goreader.core.game")
-local Engines = require("goreader.engine.engines")
-local Storage = require("goreader.services.storage")
+GOReader keeps its files in `GOReader/` on the reader (`/mnt/onboard/GOReader` on a Kobo): saved games,
+prepared books, settings. A KOReader update does not touch them.
 
-local game   = Game.new{ size = 9, handicap = 0, black = "You", white = "Pachi" }
-local engine = Engines.pachi{ level = 5, path = "/mnt/onboard/GOReader/bin/pachi" }
+### Optional extras
 
-local ok, why = game:play(5, 5)                 -- human move; false + reason if illegal
-local m = engine:genmove(game:position(), game:to_move())
-if m.kind == "move" then game:play(m.col, m.row)
-elseif m.kind == "pass" then game:pass()
-else game:resign() end
+* **GNU Go** for *vs Computer*: put an ARM build of the `gnugo` program at `GOReader/bin/gnugo`.
+* **Kogo's Joseki Dictionary** for the joseki screen: put `kjd.sgf` at `GOReader/joseki/kjd.sgf`. It is not
+  included here; check its terms of use.
 
-local dead  = engine:dead_stones(game:position())   -- at the end
-local score = game:finish(dead)                      -- writes RE into the SGF
-Storage.new():save_game(game:to_sgf(), "You vs Pachi 2026-10-15")
-```
+## Status
 
-`Game:undo(n)`, `Game:resign(color)`, `Game.from_sgf(text)` (replays the main
-line through the rules and reports `move N: reason` for an illegal move).
+Beta. It works on the author's device, but plenty is new: expect rough edges. Please report problems with the
+KOReader log (`crash.log`) if something fails.
 
-## Engine interface
+Not included yet: Go problems (tsumego, shelved) and other languages.
 
-Any engine (local process, remote KataGo, OGS) only has to provide:
+## License
 
-| method | returns |
-|---|---|
-| `genmove(position, color)` | `{kind="move",col,row}` / `{kind="pass"}` / `{kind="resign"}` or `nil, err` |
-| `dead_stones(position)` | list of `{col,row}` or `nil, err` |
-| `final_score(position)` | `{winner, text}` or `nil, err` |
-| `describe()` | label for the UI |
+GOReader is free software under the **GNU Affero General Public License v3.0** (see [LICENSE](LICENSE)),
+the same license as KOReader. Copyright (C) 2026 akendrick.
 
-`position` is `Game:position()`: `{size, komi, setup={B,W}, moves, to_move}`.
+Kogo's Joseki Dictionary and GNU Go are separate works with their own terms and are not part of this repository.
 
-Local engines run in one-shot mode: a fresh process per request is fed a
-complete GTP script (`gtp.lua`), so there are no long-lived pipes to hang.
+## For developers
 
-## Strength
-
-Calibration (`tools/calibrate.sh`, results in `tools/out/summary.txt`), 9x9
-against GNU Go level 10: GNU Go 1/3/5/7 score 25/38/38/48 %. Pachi at its
-500-playout minimum already scores 92 %, and more playouts do not change that,
-so Pachi cannot be made weaker by playouts alone. For a 9 kyu the default
-opponent is GNU Go; Pachi is the strong option. Device speed (playouts per
-second on the Forma) is still unmeasured. `Engines.PACHI_PLAYOUTS` stays a
-placeholder until then.
-
-## Tests
-
-```
-lua tests/run.lua          # from the repository root; 397 tests
-python3 server/test_broker.py      # broker
-bash tools/selftest_annotate.sh    # broker + annotate tool end to end
-```
-
-`tests/fake_engine.lua` is a tiny GTP engine used to test the process path
-without Pachi installed.
-
-## Known data issues found while building this
-
-* `gobook.koplugin/sgf/9x9-beginner.sgf` has coordinates outside a 9x9 board
-  (move 34 onward); GoBook silently ignored them. GOReader reports it.
-* `gobook.koplugin/sgf/ear-reddening-1846.sgf` is inconsistent at move 215
-  (a move on a point holding a live stone); a hand-typed record.
-* All 15 real DGS games in `~/Downloads` (3,174 moves) replay cleanly.
+See [DEVELOPMENT.md](DEVELOPMENT.md). The code is pure Lua (LuaJIT-compatible) with the game logic separate from
+the KOReader screens, and is covered by a test suite that runs without a device.
