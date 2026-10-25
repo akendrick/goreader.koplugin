@@ -166,6 +166,38 @@ function Env.set_refresh_every()
     end)
 end
 
+--[[ "OGS button activation pause during live game": how long the buttons are ignored after the server
+     has sent your move back (0 = off, up to 5 seconds, in half seconds). A small dialog that steps the
+     value and shows it again, so a few presses reach the number wanted. ]]
+Env.PAUSE_DEFAULT = 1
+
+function Env.pause_text(v)
+    if v == 0 then return "off" end
+    if v == 1 then return "1 second" end
+    return (v == math.floor(v) and string.format("%d", v) or string.format("%.1f", v)) .. " seconds"
+end
+
+function Env.set_button_pause()
+    local s = Env.settings()
+    local function show()
+        local v = s:get("view.ogs_button_pause")
+        Env.choice_dialog("OGS button activation pause during live game:\n" .. Env.pause_text(v), {
+            { "less", "Shorter  (- 0.5 s)" }, { "more", "Longer  (+ 0.5 s)" },
+            { "off", "Off" }, { "default", "Back to " .. Env.pause_text(Env.PAUSE_DEFAULT) }, { "done", "Done" },
+        }, function(choice)
+            local n = v
+            if choice == "less" then n = math.max(0, v - 0.5)
+            elseif choice == "more" then n = math.min(5, v + 0.5)
+            elseif choice == "off" then n = 0
+            elseif choice == "default" then n = Env.PAUSE_DEFAULT
+            else return end
+            s:set("view.ogs_button_pause", n); s:save()
+            show()
+        end)
+    end
+    show()
+end
+
 function Env.info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end

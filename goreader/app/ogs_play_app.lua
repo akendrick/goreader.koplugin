@@ -238,6 +238,7 @@ function App:play(session, game_id, title, up)
         session = session, game_id = game_id, title = title, show_text = Env.show_text,
         refresh_every = Env.settings():get("view.ogs_refresh_every"),
         quick_replies = Env.settings():get("ogs.quick_replies"),
+        button_pause = Env.settings():get("view.ogs_button_pause"),
         choose = Env.choice_dialog,
         ask_text = function(t, initial, ok_label, cb) Env.text_dialog(t, initial, ok_label, cb, false) end,
     }

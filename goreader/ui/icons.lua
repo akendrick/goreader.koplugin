@@ -180,6 +180,13 @@ PICTURES.refresh = function(d)     -- a circular arrow (screen refresh)
     line(bb, hx, hy, hx + u(2, nil, true), hy + u(22, nil, true), w + 2, Kit.BLACK)
 end
 
+PICTURES.pause = function(d)       -- the button pause: two bars in a circle
+    local bb, u, w, bg = d.bb, d.u, d.w, d.bg
+    ring(bb, u(50), u(50, true), u(42, nil, true), w, Kit.BLACK, bg)
+    bb:paintRect(math.floor(u(35)), math.floor(u(30, true)), math.floor(u(11, nil, true)), math.floor(u(40, nil, true)), Kit.BLACK)
+    bb:paintRect(math.floor(u(54)), math.floor(u(30, true)), math.floor(u(11, nil, true)), math.floor(u(40, nil, true)), Kit.BLACK)
+end
+
 Icons.NAMES = {}
 for name in pairs(PICTURES) do Icons.NAMES[#Icons.NAMES + 1] = name end
 table.sort(Icons.NAMES)

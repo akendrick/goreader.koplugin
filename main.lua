@@ -423,6 +423,7 @@ function GOReader:_tree()
         { text = "Settings", icon = "gear", children = {
             { text = "Wi-Fi", icon = "wifi", what = "wi-fi", run = function(up) up(); Env.show_wifi_networks() end },
             { text = "Screen refresh", icon = "refresh", what = "screen refresh", run = function(up) up(); Env.set_refresh_every() end },
+            { text = "Button pause", icon = "pause", what = "button pause", run = function(up) up(); Env.set_button_pause() end },
             { text = "Quick messages", icon = "chat", what = "quick messages", run = function(up) apps.quick:open(up) end },
             { text = "Connection test", icon = "check", what = "ogs test", run = function(up) apps.ogs:connection_test(up) end },
         } },

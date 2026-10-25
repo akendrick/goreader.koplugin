@@ -27,6 +27,8 @@ local function int_between(a, b)
 end
 
 local function is_bool(v) return type(v) == "boolean" end
+-- seconds from 0 (off) to 5 in steps of half a second
+local function half_seconds(v) return type(v) == "number" and v >= 0 and v <= 5 and v * 2 == math.floor(v * 2) end
 local function short_string(v) return type(v) == "string" and #v <= 64 end
 local function name_list(v)
     if type(v) ~= "table" then return false end
@@ -48,6 +50,7 @@ Settings.SCHEMA = {
     ["ogs.user"]         = { default = "",       check = short_string },
     ["ogs.chat"]         = { default = true,     check = is_bool },
     ["view.ogs_refresh_every"] = { default = 10, check = int_between(0, 100) },
+    ["view.ogs_button_pause"] = { default = 1, check = half_seconds },
     ["ogs.muted"]        = { default = {},       check = name_list },
     ["ogs.quick_replies"] = { default = QM.DEFAULTS, check = QM.valid_list },
     ["remote.url"]       = { default = "",       check = function(v) return type(v) == "string" and #v <= 200 and (v == "" or v:match("^https://")) ~= nil end },

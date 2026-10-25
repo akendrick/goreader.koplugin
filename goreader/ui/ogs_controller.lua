@@ -34,8 +34,9 @@ local function wall_clock()
     return os.time()
 end
 
--- After the server has sent our move back, buttons stay ignored this much longer: the slow screen
--- is still catching up, and a second tap meant for CONFIRM MOVE must not land on the buttons beneath it
+-- After the server has sent our move back, buttons stay ignored this much longer (seconds; the
+-- setting "button pause"): the slow screen is still catching up, and a second tap meant for CONFIRM
+-- MOVE must not land on the buttons beneath it. 0 = no extra pause.
 Controller.AFTER_ECHO_SECONDS = 1
 
 -- One-tap chat messages (a person types slowly on e-ink): your own list, from Settings
@@ -61,6 +62,7 @@ function Controller.new(opts)
         title = opts.title, show_text = opts.show_text or function() end,
         choose = opts.choose or function() end, ask_text = opts.ask_text or function() end,
         quick_replies = opts.quick_replies or QM.DEFAULTS, clock = opts.clock or wall_clock, ignore_until = nil,
+        button_pause = opts.button_pause or Controller.AFTER_ECHO_SECONDS,
         message = nil, sending = false, asked_undo = false,
         now = opts.now or os.time, live_clocks = false, region_refresh = true, refresh_every = opts.refresh_every or 10, moves_since_full = 0, want_full = false, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
         on_change = function() end, closed = false,
@@ -86,7 +88,7 @@ function Controller:_event(name, data)
     elseif name == "chat" then
         self.chat_dirty = true                             -- the chat strip can wait a little
     end
-    if name == "move" and self.sending then self.ignore_until = self.clock() + Controller.AFTER_ECHO_SECONDS end
+    if name == "move" and self.sending and self.button_pause > 0 then self.ignore_until = self.clock() + self.button_pause end
     if name == "move" or name == "loaded" or name == "phase" then self.sending = false end
     if name == "move" or name == "phase" then self.message = nil end
     if name == "error" then
