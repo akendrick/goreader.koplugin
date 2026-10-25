@@ -88,6 +88,16 @@ end
 -- Widget
 -- ---------------------------------------------------------------------------
 
+-- How long things take is logged (only the slow ones), so a sluggish screen can be diagnosed from the log
+local function note_slow(what, started, limit)
+    local ms = (os.clock() - started) * 1000
+    if ms >= (limit or 150) then
+        local ok, logger = pcall(require, "logger")
+        if ok and logger then logger.info(string.format("GOReader: %s took %d ms", what, ms)) end
+    end
+    return ms
+end
+
 function GameScreen:init()
     self.sw, self.sh = Screen:getWidth(), Screen:getHeight()
     self.dimen = Geom:new{ x = 0, y = 0, w = self.sw, h = self.sh }
@@ -103,10 +113,17 @@ function GameScreen:init()
 end
 
 function GameScreen:update(no_refresh, mode)
+    local t0 = os.clock()
     self.st = self.controller:state()
     self.lay = GameScreen.layout(self.sw, self.sh, self.st, Kit.dp)
+    note_slow("preparing the screen (state)", t0, 100)
     if not no_refresh then
-        UIManager:setDirty(self, mode or "ui")
+        -- a controller may ask for a full (flashing, clean) refresh for what just happened, e.g. a move
+        local wanted = self.controller.take_refresh_mode and self.controller:take_refresh_mode()
+        local use = mode or wanted or "ui"
+        local ok, logger = pcall(require, "logger")
+        if ok and logger and use == "full" then logger.info("GOReader: full refresh requested") end
+        UIManager:setDirty(self, use)
     end
 end
 
@@ -115,7 +132,9 @@ function GameScreen:_schedule_tick()
     self._tick = self._tick or function()
         if self.closed then return end
         local now = os.time()
+        local t0 = os.clock()
         local changed = self.controller:tick(now)
+        note_slow("connection pump and tick", t0, 300)
         if changed then self:update(); self._clock_at = now
         else self:_refresh_clocks(now) end
         UIManager:scheduleIn(self.tick_seconds, self._tick)
@@ -184,6 +203,12 @@ function GameScreen:_paint_player(bb, x, y, w, h, p, color, active, fill)
 end
 
 function GameScreen:paintTo(bb, x, y)
+    local t0 = os.clock()
+    self:_paint(bb, x, y)
+    note_slow("paint of " .. tostring(self.controller.title or "screen"), t0)
+end
+
+function GameScreen:_paint(bb, x, y)
     local st, lay = self.st, self.lay
     self._rects = { buttons = {}, confirm_buttons = {} }
     Kit.fill(bb, x, y, self.sw, self.sh, Kit.WHITE)

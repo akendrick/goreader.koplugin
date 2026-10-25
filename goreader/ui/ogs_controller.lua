@@ -53,7 +53,7 @@ function Controller.new(opts)
         title = opts.title, show_text = opts.show_text or function() end,
         choose = opts.choose or function() end, ask_text = opts.ask_text or function() end,
         message = nil, sending = false, asked_undo = false,
-        now = opts.now or os.time, live_clocks = true, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
+        now = opts.now or os.time, live_clocks = opts.full_refresh ~= true, full_refresh = opts.full_refresh == true, want_full = false, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
         on_change = function() end, closed = false,
     }, Controller)
     self.play = Play.new{
@@ -67,6 +67,7 @@ function Controller:_event(name, data)
     if name == "loaded" or name == "move" or name == "phase" or name == "clock"
        or name == "error" or name == "resync" or name == "removed_stones" or name == "undo_requested" then
         self.dirty = true                                  -- a move (and its clocks) changes the board now
+        if name == "loaded" or name == "move" or name == "phase" or name == "removed_stones" then self.want_full = true end
     elseif name == "chat" then
         self.chat_dirty = true                             -- the chat strip can wait a little
     end
@@ -77,6 +78,16 @@ function Controller:_event(name, data)
         self.sending = false
         self.message = data and data.message or "Something went wrong."
     end
+end
+
+--[[ How the screen should refresh for what just changed: a move, a new game or a change of
+     phase get a full (flashing, clean) refresh when that is switched on; everything else the
+     quick partial one. The strip of live clocks is not refreshed on its own then: the clocks
+     come up to date with the next move. ]]
+function Controller:take_refresh_mode()
+    local want = self.want_full and self.full_refresh
+    self.want_full = false
+    return want and "full" or nil
 end
 
 function Controller:playing()
