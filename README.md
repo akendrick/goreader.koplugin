@@ -1,4 +1,4 @@
-# GOReader (beta, version 0.1.0-beta) backend
+# GOReader (beta 0.1.0): core and device code
 
 UI-independent core of GOReader. Plain Lua (5.1 / LuaJIT compatible), no
 KOReader dependencies, so everything here runs and is tested on a desktop.
