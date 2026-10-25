@@ -26,6 +26,13 @@ local Last    = require("goreader.ui.lastmove")
 local Controller = {}
 Controller.__index = Controller
 
+-- wall-clock seconds, finer than os.time when LuaSocket is there
+local function wall_clock()
+    local ok, socket = pcall(require, "socket")
+    if ok and socket and socket.gettime then return socket.gettime() end
+    return os.time()
+end
+
 local QM = require("goreader.core.quick_messages")
 
 -- One-tap chat messages (a person types slowly on e-ink): your own list, from Settings
@@ -50,7 +57,7 @@ function Controller.new(opts)
         session = assert(opts.session), game_id = assert(opts.game_id),
         title = opts.title, show_text = opts.show_text or function() end,
         choose = opts.choose or function() end, ask_text = opts.ask_text or function() end,
-        quick_replies = opts.quick_replies or QM.DEFAULTS,
+        quick_replies = opts.quick_replies or QM.DEFAULTS, clock = opts.clock or wall_clock, ignore_until = nil,
         message = nil, sending = false, asked_undo = false,
         now = opts.now or os.time, live_clocks = false, region_refresh = true, refresh_every = opts.refresh_every or 10, moves_since_full = 0, want_full = false, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
         on_change = function() end, closed = false,
@@ -302,12 +309,13 @@ function Controller:chat_menu()
     end)
 end
 
--- While a move is still on its way to the server, the buttons that give up or take back are ignored
-local GUARDED = { resign = true, undo = true, pass = true, accept = true }
+-- For two seconds after CONFIRM MOVE every button on the screen is ignored: on a slow screen a
+-- second tap meant for CONFIRM MOVE would otherwise land on the buttons that appear beneath it.
+Controller.IGNORE_SECONDS = 2
 
 function Controller:button(id)
     local play = self.play
-    if GUARDED[id] and self.sending then return end
+    if self.ignore_until and self.clock() < self.ignore_until then return end
     self.message = nil
     if id == "chat" then
         self:chat_menu()
@@ -318,7 +326,7 @@ function Controller:button(id)
         play:cancel_stage()
     elseif id == "confirm" then
         local ok, err = play:confirm()
-        if ok then self.sending = true
+        if ok then self.sending = true; self.ignore_until = self.clock() + Controller.IGNORE_SECONDS
         else self.message = REASONS[err] or ("Could not send the move (" .. tostring(err) .. ")") end
     elseif id == "pass" then
         local ok, why = play:stage_pass()
