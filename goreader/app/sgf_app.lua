@@ -40,8 +40,10 @@ function App:saver()
 end
 
 -- The set-up screen. `up` is where leaving it goes (the home window)
-function App:open(up)
+-- `mode` ("record" | "play") preselects the choice on the set-up screen
+function App:open(up, mode)
     up = up or function() self:go_home() end
+    if mode == "record" or mode == "play" then self.mode = mode end
     local switching, screen = false, nil
     local ctl = Setup.new{ mode = self.mode, size = self.size, on_start = function(mode, size)
         self.mode, self.size = mode, size

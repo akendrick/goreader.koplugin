@@ -292,11 +292,12 @@ function GOReader:openBookEntry(book)
     end)
 end
 
-function GOReader:showBookList()
-    Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu() end)
+function GOReader:showBookList(up)
+    Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu(up) end)
 end
 
-function GOReader:_show_book_menu()
+function GOReader:_show_book_menu(up)
+    up = up or function() self:showHome() end
     local ok, books = pcall(function() return self:_find_books() end)
     if not ok or type(books) ~= "table" then
         logger.warn("GOReader: library scan failed:", tostring(books))
@@ -307,7 +308,7 @@ function GOReader:_show_book_menu()
     if not books or #books == 0 then
         UIManager:show(InfoMessage:new{
             text = _("No interactive Go books found in the library.\nBooks from gobooks.com are recognised wherever they are stored.") })
-        self:showHome()
+        up()
         return
     end
     local Menu = require("ui/widget/menu")
@@ -323,7 +324,7 @@ function GOReader:_show_book_menu()
             UIManager:close(menu)
             Env.safe("open book", function() self:openBookEntry(item.book or { prepared = true, path = item.path }) end)
         end,
-        close_callback = function() UIManager:close(menu); self:showHome() end,
+        close_callback = function() UIManager:close(menu); up() end,
     }
     UIManager:show(menu)
 end
@@ -353,45 +354,66 @@ function GOReader:_apps()
     return self.apps
 end
 
--- Everything GOReader can do: the home window and the main menu list the same entries
-function GOReader:_entries()
+--[[ Everything GOReader can do, as a tree: the home tiles, the second-level tiles and the
+     KOReader menu all come from this. A leaf has run(up): `up` brings the screen it was
+     opened from back, so every exit goes up exactly one level. A node has children. ]]
+function GOReader:_tree()
     local apps = self:_apps()
+    local function sgf(mode) return function(up) apps.sgf:open(up, mode) end end
     return {
-        { text = "SGF Game", mandatory = "record / play", what = "sgf game", run = function() apps.sgf:open() end },
-        { text = "Play the computer", mandatory = "GNU Go", what = "play the computer", run = function() apps.vs:open() end },
-        { text = "Saved games (review)", mandatory = "SGF", what = "saved games", run = function() apps.review:open_library() end },
-        { text = "Dragon Go Server", mandatory = "your games", what = "dragon go server", run = function() apps.dgs:open() end },
-        { text = "Play on OGS", mandatory = "your account", what = "play on ogs", run = function() apps.ogsplay:open() end },
-        { text = "Watch OGS games", mandatory = "live", what = "ogs", run = function() apps.ogs:choose_filter() end },
-        { text = "Go books", mandatory = "interactive", what = "books", run = function() self:showBookList() end },
-        { text = "OGS chat room", mandatory = "read only", what = "ogs chat", run = function() apps.ogs:listen_room() end },
-        { text = "Joseki dictionary", mandatory = "Kogo's", what = "joseki", run = function() apps.joseki:open() end },
-        { text = "Go problems", mandatory = "tsumego", what = "problems", run = function() apps.problems:open() end },
-        { text = "Wi-Fi networks", mandatory = "change / forget", what = "wi-fi", run = function() Env.show_wifi_networks() end },
-        { text = "OGS connection test", mandatory = "", what = "ogs test", run = function() apps.ogs:connection_test() end },
+        { text = "Play", icon = "play", children = {
+            { text = "SGF editor", icon = "pencil", what = "sgf editor", run = sgf("record") },
+            { text = "vs Player", icon = "players", what = "vs player", run = sgf("play") },
+            { text = "vs Computer", icon = "computer", what = "play the computer", run = function(up) apps.vs:open(up) end },
+        } },
+        { text = "OGS", icon = "ogs", children = {
+            { text = "Play", icon = "play", what = "play on ogs", run = function(up) apps.ogsplay:open(up) end },
+            { text = "Watch", icon = "eye", what = "watch ogs", run = function(up) apps.ogs:choose_filter(up) end },
+            { text = "Chat", icon = "chat", what = "ogs chat", run = function(up) apps.ogs:listen_room(nil, up) end },
+        } },
+        { text = "Dragon Go Server", icon = "mail", what = "dragon go server", run = function(up) apps.dgs:open(up) end },
+        { text = "Saved games", icon = "document", what = "saved games", run = function(up) apps.review:open_library(up) end },
+        { text = "Go books", icon = "book", what = "books", run = function(up) self:showBookList(up) end },
+        { text = "Joseki", icon = "corner", what = "joseki", run = function(up) apps.joseki:open(up) end },
+        { text = "Go problems", icon = "puzzle", what = "problems", run = function(up) apps.problems:open(up) end },
+        { text = "Settings", icon = "gear", children = {
+            { text = "Wi-Fi", icon = "wifi", what = "wi-fi", run = function(up) up(); Env.show_wifi_networks() end },
+            { text = "Connection test", icon = "check", what = "ogs test", run = function(up) apps.ogs:connection_test(up) end },
+        } },
     }
 end
 
-function GOReader:showHome()
-    if self.home_menu then UIManager:close(self.home_menu); self.home_menu = nil end
-    local Menu = require("ui/widget/menu")
-    local apps = self:_apps()
-    local items = {}
-    for _, e in ipairs(self:_entries()) do
-        items[#items + 1] = { text = e.text, mandatory = e.mandatory,
-            callback = function() UIManager:close(self.home_menu); self.home_menu = nil; Env.safe(e.what, e.run) end }
-    end
-    local menu
-    menu = Menu:new{
-        title = _("GOReader"), item_table = items,
-        covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = false,
-        items_per_page = 8,
-        onMenuSelect = function(_, item) item.callback() end,
-        close_callback = function() UIManager:close(menu); self.home_menu = nil end,
+-- Show one level of the tree as tiles. `parent_up` returns to the level above (nil at the top).
+function GOReader:showTiles(nodes, title, parent_up)
+    if self.home_screen then UIManager:close(self.home_screen); self.home_screen = nil end
+    local TileScreen = require("goreader.ui.tilescreen")
+    local tiles = {}
+    for i, n in ipairs(nodes) do tiles[i] = { id = i, label = n.text, icon = n.icon, node = n } end
+    local function here() self:showTiles(nodes, title, parent_up) end
+    local screen
+    screen = TileScreen:new{
+        title = title, tiles = tiles, cols = 4, rows = 4,
+        on_back = parent_up,
+        on_close = function() self.home_screen = nil end,
+        on_select = function(tile)
+            self.home_screen = nil
+            local node = tile.node
+            if node.children then
+                self:showTiles(node.children, node.text, here)
+            else
+                Env.safe(node.what, function() node.run(here) end)
+            end
+        end,
     }
-    self.home_menu = menu
-    UIManager:show(menu)
+    self.home_screen = screen
+    UIManager:show(screen)
     UIManager:setDirty(nil, "full")
+    return screen
+end
+
+-- The home screen: the top level of the tree
+function GOReader:showHome()
+    return self:showTiles(self:_tree(), _("GOReader"), nil)
 end
 
 function GOReader:onOpenGOReader() self:showHome(); return true end
@@ -415,9 +437,19 @@ function GOReader:addToMainMenu(menu_items)
         subs[#subs + 1] = { text = _("Close this book, back to GOReader"), callback = function() self:leaveBook("home") end }
         subs[#subs + 1] = { text = _("Exit KOReader"), callback = function() self:leaveBook("quit") end }
     end
-    for _, e in ipairs(self:_entries()) do
-        subs[#subs + 1] = { text = e.text, callback = function() Env.safe(e.what, e.run) end }
+    local function to_menu(nodes)
+        local out = {}
+        for _, n in ipairs(nodes) do
+            if n.children then
+                out[#out + 1] = { text = n.text, sub_item_table = to_menu(n.children) }
+            else
+                -- from the KOReader menu there is no screen to come back to: up closes nothing and does nothing
+                out[#out + 1] = { text = n.text, callback = function() Env.safe(n.what, function() n.run(function() end) end) end }
+            end
+        end
+        return out
     end
+    for _, item in ipairs(to_menu(self:_tree())) do subs[#subs + 1] = item end
     menu_items.goreader = { text = _("GOReader"), sorting_hint = "main", sub_item_table = subs }
     self:_put_menu_first()
 end
