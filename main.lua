@@ -23,6 +23,7 @@ local GOReader = WidgetContainer:extend{
 
 function GOReader:init()
     self.side_cache = {}
+    require("goreader.ui.boardview").show_coordinates = function() return Env.coordinates_on() end
     if self.ui.menu then self.ui.menu:registerToMainMenu(self) end
     local ok, Dispatcher = pcall(require, "dispatcher")
     if ok then                                  -- a gesture/shortcut action: "Open GOReader books"
@@ -423,6 +424,7 @@ function GOReader:_tree()
         { text = "Settings", icon = "gear", children = {
             { text = "Wi-Fi", icon = "wifi", what = "wi-fi", run = function(up) up(); Env.show_wifi_networks() end },
             { text = "Screen refresh", icon = "refresh", what = "screen refresh", run = function(up) up(); Env.set_refresh_every() end },
+            { text = "Board coordinates", icon = "coordinates", what = "board coordinates", run = function(up) up(); Env.set_coordinates() end },
             { text = "Button pause", icon = "pause", what = "button pause", run = function(up) up(); Env.set_button_pause() end },
             { text = "Quick messages", icon = "chat", what = "quick messages", run = function(up) apps.quick:open(up) end },
             { text = "Optional features", icon = "switch", what = "optional features", run = function(up) up(); Env.set_features() end },

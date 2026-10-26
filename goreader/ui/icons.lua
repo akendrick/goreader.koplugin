@@ -194,6 +194,16 @@ PICTURES.switch = function(d)      -- an on/off switch (optional features)
     ring(bb, u(30), u(50, true), u(15, nil, true), math.max(2, math.floor(w * 0.8)), Kit.BLACK, bg)
 end
 
+PICTURES.coordinates = function(d)  -- a board corner with its letters and numbers
+    local bb, u, w = d.bb, d.u, d.w
+    for _, v in ipairs({ 36, 62, 88 }) do
+        bb:paintRect(math.floor(u(v)), math.floor(u(30, true)), math.max(2, math.floor(w / 2)), math.floor(u(62, nil, true)), Kit.BLACK)
+        bb:paintRect(math.floor(u(30)), math.floor(u(v, true)), math.floor(u(62, nil, true)), math.max(2, math.floor(w / 2)), Kit.BLACK)
+    end
+    for i, t in ipairs({ "A", "B", "C" }) do Kit.text_centered(bb, u(10 + i * 26), u(16, true), t, math.floor(u(20, nil, true)), Kit.BLACK, true) end
+    for i, t in ipairs({ "1", "2", "3" }) do Kit.text_centered(bb, u(14), u(10 + i * 26, true), t, math.floor(u(20, nil, true)), Kit.BLACK, true) end
+end
+
 Icons.NAMES = {}
 for name in pairs(PICTURES) do Icons.NAMES[#Icons.NAMES + 1] = name end
 table.sort(Icons.NAMES)

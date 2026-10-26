@@ -231,6 +231,26 @@ function Env.set_features()
     show()
 end
 
+--[[ Board coordinates (the letters and numbers along the edges) on every board except Go books:
+     on by default. Off, the board grows a little into the space they took. ]]
+function Env.coordinates_on()
+    local ok, s = pcall(Env.settings)
+    if not ok or not s then return true end
+    return s:get("view.coordinates") ~= false
+end
+
+function Env.set_coordinates()
+    local s = Env.settings()
+    local on = Env.coordinates_on()
+    Env.choice_dialog("Board coordinates (A-T and 1-19 along the edges)\nNow: " .. (on and "ON" or "OFF")
+        .. "\nOff gives the boards a little more room. Go books are not affected.", {
+        { "on", "On" }, { "off", "Off" }, { "cancel", "Cancel" } }, function(choice)
+        if choice ~= "on" and choice ~= "off" then return end
+        s:set("view.coordinates", choice == "on"); s:save()
+        Env.info("Board coordinates are " .. (choice == "on" and "on" or "off") .. ".", 2)
+    end)
+end
+
 function Env.info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end

@@ -23,6 +23,10 @@ local Kit = require("goreader.ui.kit")
 
 local BoardView = {}
 
+-- Do boards show the letters and numbers along the edges? A setting (Settings > Board coordinates);
+-- the device side points this at the saved value. Go books draw their own boards and are not affected.
+BoardView.show_coordinates = function() return true end
+
 local STARS = {
     [9]  = { { 3, 3 }, { 7, 3 }, { 5, 5 }, { 3, 7 }, { 7, 7 } },
     [13] = { { 4, 4 }, { 10, 4 }, { 7, 7 }, { 4, 10 }, { 10, 10 } },

@@ -64,7 +64,7 @@ function GameScreen.layout(sw, sh, st, dp)
     local avail = sh - y - reserve
     local bpad = st.full_board and 0 or pad                 -- a full-width board has no margins and no A-T / 1-19 labels
     local board_w = math.min(sw - 2 * bpad, avail)
-    local lay = BoardView.layout(board_w, (st.board and st.board.size) or 19, { coords = not st.full_board })
+    local lay = BoardView.layout(board_w, (st.board and st.board.size) or 19, { coords = BoardView.show_coordinates() })
     r.board = { x = math.floor((sw - board_w) / 2), y = y + dp(4), w = board_w, h = lay.height, lay = lay }
     y = r.board.y + r.board.h + dp(4)
 
@@ -93,7 +93,7 @@ local function note_slow(what, started, limit)
     local ms = (os.clock() - started) * 1000
     if ms >= (limit or 150) then
         local ok, logger = pcall(require, "logger")
-        if ok and logger then logger.info(string.format("GOReader: %s took %d ms", what, ms)) end
+        if ok and logger then logger.info(string.format("GOReader: %s took %d ms", what, math.floor(ms))) end
     end
     return ms
 end

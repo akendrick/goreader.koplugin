@@ -1,6 +1,6 @@
 # GOReader (beta) for KOReader
 
-**A Go (weiqi / baduk) plugin for KOReader, built for e-ink readers. Version 0.1.0-beta.**
+**A Go (weiqi / baduk) plugin for KOReader, built for e-ink readers. Version 0.1.1-beta.**
 
 Mainly a Go playing and recording app, with online play on OGS and an interactive Go book reader.
 Written and tested on a Kobo Forma; other KOReader devices may work but are untested.

@@ -20,8 +20,8 @@ function Faceoff.layout(sw, sh, size, dp)
     local pad = 0
     local strip_h, line_h = math.min(dp(110), math.floor(sh * 0.07)), dp(10)
     local avail = sh - 2 * strip_h - line_h
-    local board_w = math.min(sw, avail)                            -- the full width of the screen, no A-T / 1-19 labels
-    local lay = BoardView.layout(board_w, size, { coords = false })
+    local board_w = math.min(sw, avail)                            -- the full width of the screen (labels, when on, are inside it)
+    local lay = BoardView.layout(board_w, size, { coords = BoardView.show_coordinates() })
     local board_y = strip_h + line_h + math.floor((avail - lay.height) / 2)
     return {
         sw = sw, sh = sh, pad = pad,
