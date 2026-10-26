@@ -277,6 +277,42 @@ function GOReader:_find_books()
     return list
 end
 
+--[[ The list of Go books is kept between visits (booklist.json) so opening Go books is instant:
+     the library is searched only when you press Scan (or the very first time). A saved entry is
+     dropped when its file is gone, and shown as prepared once its prepared copy exists. ]]
+local LIST_FILE = Env.ROOT .. "/booklist.json"
+
+function GOReader:_saved_books()
+    local json = require("goreader.services.json")
+    local f = io.open(LIST_FILE, "rb")
+    if not f then return nil end
+    local text = f:read("*a"); f:close()
+    local ok, t = pcall(json.decode, text)
+    if not ok or type(t) ~= "table" then return nil end
+    local lfs = require("libs/libkoreader-lfs")
+    local out = {}
+    for _, b in ipairs(t) do
+        if type(b) == "table" and type(b.title) == "string" and type(b.path) == "string" then
+            if b.dst then
+                local a = lfs.attributes(b.dst)
+                if a and a.mode == "file" then                       -- prepared since the list was made
+                    b.prepared, b.path, b.size, b.source = true, b.dst, a.size, nil
+                end
+            end
+            local where = b.prepared and b.path or (b.source or b.path)
+            local a = lfs.attributes(where)
+            if a and a.mode == "file" then out[#out + 1] = b end   -- still there
+        end
+    end
+    return out
+end
+
+function GOReader:_save_books(list)
+    local json = require("goreader.services.json")
+    local f = io.open(LIST_FILE, "wb")
+    if f then f:write(json.encode(list)); f:close() end
+end
+
 -- Open a book; an original is prepared first (a copy is written, the original is never changed)
 function GOReader:openBookEntry(book)
     if book.prepared then return self:openBook(book.path) end
@@ -294,27 +330,23 @@ function GOReader:openBookEntry(book)
 end
 
 function GOReader:showBookList(up)
+    up = up or function() self:showHome() end
+    local books = self:_saved_books()
+    if books then return self:_show_book_grid(books, up) end        -- no searching: the list from last time
     Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu(up) end)
 end
 
-function GOReader:_show_book_menu(up, rescan)
+-- Search the library now (the Scan button, and the very first visit), save the list and show it
+function GOReader:_show_book_menu(up)
     up = up or function() self:showHome() end
-    if rescan then
-        local f = io.open(CACHE_FILE, "wb"); if f then f:write("{}"); f:close() end
-    end
     local ok, books = pcall(function() return self:_find_books() end)
     if not ok or type(books) ~= "table" then
         logger.warn("GOReader: library scan failed:", tostring(books))
         -- fall back to the books folder alone
         local lfs = require("libs/libkoreader-lfs")
-        books = Booklist.scan(Booklist.DEFAULT_DIR, lfs)
+        books = Booklist.scan(Booklist.DEFAULT_DIR, lfs) or {}
     end
-    if not books or #books == 0 then
-        UIManager:show(InfoMessage:new{
-            text = _("No interactive Go books found in the library.\nBooks from gobooks.com are recognised wherever they are stored.") })
-        up()
-        return
-    end
+    self:_save_books(books)
     self:_show_book_grid(books, up)
 end
 
@@ -333,15 +365,17 @@ function GOReader:_show_book_grid(books, up)
     local screen
     screen = GridScreen:new{
         title = _("Go books"), items = items, cols = 3, rows = 3, compact = true, page = math.max(1, self.book_page or 1),
-        buttons = { { id = "rescan", label = _("Rescan") }, { id = "list", label = _("List") } },
+        borders = false, title_scale = 0.7, subtitle_scale = 0.5,        -- covers without frames, smaller captions
+        empty_text = _("No Go books in the list. Press Scan to look for them."),
+        buttons = { { id = "scan", label = _("Scan") }, { id = "list", label = _("List") } },
         on_select = function(item)
             self.book_page = screen.page
             Env.safe("open book", function() self:openBookEntry(item.book) end)
         end,
         on_button = function(id)
             self.book_page = screen.page
-            if id == "rescan" then
-                Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu(up, true) end)
+            if id == "scan" then
+                Env.with_progress(_("Looking for Go books…"), function() self:_show_book_menu(up) end)
             else
                 self:_show_book_list(books, function() self:_show_book_grid(books, up) end)
             end
@@ -504,18 +538,22 @@ function GOReader:addToMainMenu(menu_items)
             elseif n.children then
                 out[#out + 1] = { text = n.text, sub_item_table = to_menu(n.children) }
             else
-                -- from the KOReader menu there is no screen to come back to: up closes nothing and does nothing
-                out[#out + 1] = { text = n.text, callback = function() Env.safe(n.what, function() n.run(function() end) end) end }
+                -- from the KOReader menu, leaving whatever was chosen (or finishing a setting) always lands on the
+                -- GOReader tiles, so the menu does not have to be opened again to reach another part
+                out[#out + 1] = { text = n.text, callback = function() Env.safe(n.what, function() n.run(function() self:showHome() end) end) end }
             end
         end
         return out
     end
+    local home_item = { text = _("GOReader home screen"), callback = function() self:showHome() end }
+    subs[#subs + 1] = home_item
     for _, item in ipairs(to_menu(self:_tree())) do subs[#subs + 1] = item end
     -- the function is asked again each time the entry is opened, so turning an optional feature on or
     -- off in Settings shows at once; the table is the fallback
     local function current()
         local fresh = {}
         if self:_is_go_book() then for i = 1, 3 do fresh[i] = subs[i] end end
+        fresh[#fresh + 1] = home_item
         for _, item in ipairs(to_menu(self:_tree())) do fresh[#fresh + 1] = item end
         return fresh
     end

@@ -10,6 +10,9 @@
             buttons = { {id="list", label="List"}, {id="reload", label="Reload"} },   -- after Prev / page / Next
             on_button = fn(id),                 (on_list / on_reload still work for those two)
             cols = 2, rows = 3, compact = false, -- compact: smaller caption text
+            borders = true,                      -- false: no frame around each cell
+            title_scale = 1, subtitle_scale = 1, -- multiply the caption text sizes (0.7 = 30% smaller)
+            empty_text = nil,                    -- shown when there are no items
         }
     An item's board may be a function returning the board: it is only called when the item is
     first drawn, so a long list costs nothing until its page is shown.
@@ -29,7 +32,7 @@ local Icons          = require("goreader.ui.icons")
 local Grid = InputContainer:extend{
     name = "goreader_grid", title = "", items = {}, cols = 2, rows = 3,
     page = 1, on_select = nil, on_list = nil, on_reload = nil, on_close = nil,
-    buttons = nil, on_button = nil, compact = false,
+    buttons = nil, on_button = nil, compact = false, borders = true, title_scale = 1, subtitle_scale = 1, empty_text = nil,
 }
 
 --[[ Pure layout. Returns { header, footer, cells = { {x,y,w,h, board = {x,y,w}, caption = {x,y,w,h}} ... }, per_page } ]]
@@ -97,7 +100,7 @@ end
 
 function Grid:_paint_cell(bb, x, y, cell, item)
     local thick = item.mine and 5 or 2
-    Kit.border(bb, x + cell.x, y + cell.y, cell.w, cell.h, thick, Kit.BLACK)
+    if self.borders ~= false then Kit.border(bb, x + cell.x, y + cell.y, cell.w, cell.h, thick, Kit.BLACK) end
     if item.image ~= nil then
         local box = cell.board
         local img = item._img
@@ -127,9 +130,19 @@ function Grid:_paint_cell(bb, x, y, cell, item)
         BoardView.paint(bb, x + cell.board.x, y + cell.board.y, lay, b, {})
     end
     local c = cell.caption
-    local px = math.floor(c.h * (self.compact and 0.28 or 0.36))
-    Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.28, item.title or "", px, Kit.BLACK, not self.compact, c.w)
-    Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.74, item.subtitle or "", math.floor(px * (self.compact and 1.0 or 0.88)), item.mine and Kit.BLACK or Kit.DARK, item.mine or self.compact, c.w)
+    local base = math.floor(c.h * (self.compact and 0.28 or 0.36))
+    local ts, ss = self.title_scale or 1, self.subtitle_scale or 1
+    if ts == 1 and ss == 1 then
+        Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.28, item.title or "", base, Kit.BLACK, not self.compact, c.w)
+        Kit.text_left(bb, x + c.x, y + c.y + c.h * 0.74, item.subtitle or "", math.floor(base * (self.compact and 1.0 or 0.88)), item.mine and Kit.BLACK or Kit.DARK, item.mine or self.compact, c.w)
+    else
+        -- scaled text: the second line sits just under the first
+        local tpx = math.max(8, math.floor(base * ts))
+        local spx = math.max(7, math.floor(base * (self.compact and 1.0 or 0.88) * ss))
+        local ty = y + c.y + tpx
+        Kit.text_left(bb, x + c.x, ty, item.title or "", tpx, Kit.BLACK, not self.compact, c.w)
+        Kit.text_left(bb, x + c.x, ty + tpx * 0.5 + spx * 0.9, item.subtitle or "", spx, item.mine and Kit.BLACK or Kit.DARK, item.mine or self.compact, c.w)
+    end
 end
 
 function Grid:paintTo(bb, x, y)
@@ -143,6 +156,10 @@ function Grid:paintTo(bb, x, y)
     Kit.text_left(bb, x + Kit.dp(12), y + L.header.h / 2, "‹ Back", hpx, Kit.BLACK, true)
     Kit.text_centered(bb, x + self.sw / 2, y + L.header.h / 2, Kit.fit(bb, self.title, hpx, self.sw - 2 * L.header.h * 1.8, true), hpx, Kit.BLACK, true)
     Kit.fill(bb, x, y + L.header.h - 2, self.sw, 2, Kit.BLACK)
+
+    if #self.items == 0 and self.empty_text then
+        Kit.text_centered(bb, x + self.sw / 2, y + self.sh * 0.4, self.empty_text, math.floor(L.header.h * 0.42), Kit.DARK, true)
+    end
 
     -- cells for this page
     local first = (self.page - 1) * L.per_page
