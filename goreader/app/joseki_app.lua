@@ -3,7 +3,7 @@
 
     The dictionary is one large SGF (about 1.5 MB, 60,000 positions). It is read
     once per session: opening it the first time takes a while on the reader, so a
-    message says so. Put it at /mnt/onboard/GOReader/joseki/kjd.sgf.
+    message says so. Put it at /mnt/onboard/.goreader/joseki/kjd.sgf.
 --]]
 
 local UIManager  = require("ui/uimanager")

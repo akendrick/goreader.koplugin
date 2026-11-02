@@ -20,7 +20,7 @@ local KIND_TEXT = { inaccuracy = "Inaccuracy", mistake = "Mistake", blunder = "B
 function Controller.new(opts)
     return setmetatable({
         model = assert(opts.model), title = opts.title,
-        edit_note = opts.edit_note or function() end, save = opts.save,
+        edit_note = opts.edit_note or function() end, save = opts.save, chat = opts.chat,
         show_numbers = false, number_span = 10, message = nil,
         on_change = function() end,
     }, Controller)
@@ -90,6 +90,7 @@ function Controller:state()
     end
     row[#row + 1] = s.main_line and { id = "numbers", label = "Nums", style = self.show_numbers and "toggle_on" or nil }
                                 or { id = "mainline", label = "Main" }
+    if self.chat then row[#row + 1] = { id = "chat", label = "Chat" } end
     row[#row + 1] = { id = "note", label = "Note" }
     if status == "" or status == nil then
         local lm = Last.text(s.last, s.size, s.move_number)
@@ -134,6 +135,8 @@ function Controller:button(id)
     elseif id == "cands" then m.show_candidates = not m.show_candidates
     elseif id == "numbers" then self.show_numbers = not self.show_numbers
     elseif id == "mainline" then m:to_main_line()
+    elseif id == "chat" then
+        if self.chat then self.chat() end
     elseif id == "note" then
         self.edit_note(m.game.current:get("C", ""), function(text)
             if text ~= nil then m:set_comment(text); self.on_change() end

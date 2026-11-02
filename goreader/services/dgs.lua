@@ -250,34 +250,130 @@ end
 
 --[[ Send a move. `col`/`row` are GOReader coordinates (row from the top);
      pass col=nil for a pass. `move_id` guards against a double submit. ]]
-function DGS:submit_move(gid, move_id, col, row, size)
+function DGS:submit_move(gid, move_id, col, row, size, msg)
     if not self:is_logged_in() then return nil, "not_logged_in" end
     if not gid or not move_id then return nil, "missing_args" end
     local label, why = DGS.move_label(col, row, size)
     if not label then return nil, why end
-    local data, err = self:get_json(string.format(
-        "/quick_do.php?obj=game&cmd=move&gid=%s&move_id=%s&move=%s",
-        DGS.escape(gid), DGS.escape(move_id), DGS.escape(label)))
+    local url = string.format("/quick_do.php?obj=game&cmd=move&gid=%s&move_id=%s&move=%s",
+        DGS.escape(gid), DGS.escape(move_id), DGS.escape(label))
+    if type(msg) == "string" and not msg:match("^%s*$") then url = url .. "&msg=" .. DGS.escape(msg) end
+    local data, err = self:get_json(url)
     if not data then return nil, err end
     return true
 end
 
-function DGS:waiting_room()
+-- ---------------------------------------------------------------------------
+-- The waiting room: open games anyone may join
+-- ---------------------------------------------------------------------------
+
+--[[ Strength as a number for sorting, from a rating text such as "6 kyu (+5%)" or "6k (+5%)":
+     dan is positive (3d = 3), kyu negative (6k = -6, one step below 1d = -1... so 1k = -1, 1d = 1).
+     Returns strength, short text "6k (+5%)". Unreadable text sorts last. ]]
+function DGS.rank_info(text)
+    if type(text) ~= "string" then return -100, tostring(text or "?") end
+    local n, kind = text:match("(%d+)%s*([kKdD])")
+    local pct = text:match("%(([%+%-]?%d+%%?)%)")
+    if not n then return -100, text end
+    kind = kind:lower()
+    local strength = (kind == "d") and tonumber(n) or -tonumber(n)
+    local short = n .. kind .. (pct and (" (" .. (pct:find("%%") and pct or (pct .. "%")) .. ")") or "")
+    return strength, short
+end
+
+-- Hours as DGS shows them: 24 -> "1d", 36 -> "36h"
+local function hours_text(h)
+    h = tonumber(h)
+    if not h then return "?" end
+    if h > 0 and h % 24 == 0 then return string.format("%dd", h / 24) end
+    return string.format("%dh", h)
+end
+
+--[[ "J: 30d + 1d", "C: 14d + 15d / 8", "F: 30d + 1d": DGS's own text when it sends one, else built from the fields ]]
+function DGS.time_text(item)
+    if type(item.time_limit) == "string" and item.time_limit ~= "" then return item.time_limit end
+    local mode = ({ JAP = "J", CAN = "C", FIS = "F" })[tostring(item.time_mode or "")] or "?"
+    local t = mode .. ": " .. hours_text(item.time_main) .. " + " .. hours_text(item.time_byo)
+    if mode == "C" and tonumber(item.time_periods) and tonumber(item.time_periods) > 0 then t = t .. " / " .. item.time_periods end
+    return t
+end
+
+--[[ One waiting-room entry as the screen needs it:
+       { id, handle, name, rank_text, strength, size, size_text, time_text, rated, handicap, komi, comment, joinable } ]]
+function DGS.parse_offer(item)
+    local user = type(item.user) == "table" and item.user or {}
+    local strength, rank_text = DGS.rank_info(user.rating)
+    local size = tonumber(item.size)
+    return {
+        id = item.id, handle = user.handle or "?", name = user.name,
+        rank_text = rank_text, strength = strength,
+        size = size, size_text = size and (size .. "x" .. size) or "?",
+        time_text = DGS.time_text(item),
+        rated = item.rated == true or item.rated == "Y" or item.rated == 1 or item.rated == "1",
+        handicap = tonumber(item.handicap) or 0, komi = item.komi, comment = item.comment,
+        ruleset = item.ruleset, joinable = item.join ~= false and item.join ~= 0 and item.join ~= "0",
+        raw = item,
+    }
+end
+
+--[[ The offers, sorted. order: "rank" (strongest first, then name), "rank_weak", "size", "time", "name" ]]
+function DGS.sort_offers(offers, order)
+    local function name(o) return tostring(o.handle):lower() end
+    local cmp = {
+        rank = function(a, b) if a.strength ~= b.strength then return a.strength > b.strength end return name(a) < name(b) end,
+        rank_weak = function(a, b) if a.strength ~= b.strength then return a.strength < b.strength end return name(a) < name(b) end,
+        size = function(a, b) if (a.size or 0) ~= (b.size or 0) then return (a.size or 0) > (b.size or 0) end return name(a) < name(b) end,
+        time = function(a, b) if a.time_text ~= b.time_text then return a.time_text < b.time_text end return name(a) < name(b) end,
+        name = function(a, b) return name(a) < name(b) end,
+    }
+    table.sort(offers, cmp[order or "rank"] or cmp.rank)
+    return offers
+end
+
+-- "Mac - 6k (+5%) -- 19x19 | J: 30d + 1d"
+function DGS.offer_line(o)
+    return string.format("%s - %s -- %s | %s", o.handle, o.rank_text, o.size_text, o.time_text)
+end
+
+--[[ Open games you may join (suitable = only those you are allowed to join). Returns a list of parsed offers. ]]
+function DGS:waiting_room(suitable_only)
     local data, err = self:get_json(
-        "/quick_do.php?obj=wroom&cmd=list&with=user_id&filter_suitable=0&lstyle=json&limit=100")
+        "/quick_do.php?obj=wroom&cmd=list&with=user_id&filter_suitable=" .. (suitable_only == false and "0" or "1")
+        .. "&lstyle=json&limit=100")
     if not data then return nil, err end
     local offers = {}
     for _, item in ipairs(data.list_result or {}) do
-        local user = item.user or {}
-        offers[#offers + 1] = {
-            id = item.id, handle = user.handle, rating = user.rating,
-            size = item.size, rated = item.rated, ruleset = item.ruleset,
-            komi = item.komi, handicap = item.handicap,
-            time_limit = item.time_limit, comment = item.comment,
-            joinable = item.join, raw = item,
-        }
+        if type(item) == "table" and item.id then offers[#offers + 1] = DGS.parse_offer(item) end
     end
     return offers
+end
+
+-- Joining is DGS:join_waiting_room(wrid): true, or nil + DGS's error code (see DGS.JOIN_ERRORS)
+
+DGS.JOIN_ERRORS = {
+    not_allowed_for_guest = "Guests cannot join games.",
+    waitingroom_game_not_found = "That game is no longer open.",
+    max_games = "You already have the most games DGS allows.",
+    max_games_opp = "That player already has the most games DGS allows.",
+    waitingroom_own_game = "That is your own offer.",
+    waitingroom_not_in_rating_range = "Your rating is outside the range this game accepts.",
+    waitingroom_not_enough_rated_fin_games = "You have not finished enough rated games for this one.",
+    waitingroom_not_in_hero_range = "Your hero level is outside the range this game accepts.",
+    waitingroom_not_same_opponent = "You may not play this opponent again yet.",
+    no_initial_rating = "You need an initial rating first.",
+    internal_error = "DGS had an internal error. Try again later.",
+}
+
+--[[ A private message to a player (DGS has no separate in-game chat: a game message goes with a move).
+     Returns true, or nil + reason. ]]
+function DGS:send_message(handle, subject, text)
+    if not self:is_logged_in() then return nil, "not_logged_in" end
+    if not handle or handle == "" or not text or text:match("^%s*$") then return nil, "missing_args" end
+    local data, err = self:get_json(string.format(
+        "/quick_do.php?obj=message&cmd=send_msg&ouser=%s&subj=%s&msg=%s",
+        DGS.escape(handle), DGS.escape(subject or "Game"), DGS.escape(text)))
+    if not data then return nil, err end
+    return true
 end
 
 function DGS:join_waiting_room(wrid)

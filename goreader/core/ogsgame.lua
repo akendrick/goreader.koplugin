@@ -88,6 +88,7 @@ function OGSGame:load(data)
     }
     if not game then return nil, err end
 
+    self.raw_data = data
     self.game, self.size, self.handicap = game, w, handicap
     self.free_handicap = data.free_handicap_placement and handicap > 0
     self.game_id = data.game_id or data.id
@@ -162,6 +163,31 @@ function OGSGame:apply_move(ev)
     local ok, why = self:_play(ev.move)
     if not ok then self.desynced = true; self.problem = why; return "resync", why end
     return "applied"
+end
+
+--[[ The board as it was after the first n moves (for replaying): { board = rows, last = {col,row,color}|{pass}|nil,
+     captures = {B,W} } or nil. Built from scratch from the game's own data, so the live game is not disturbed. ]]
+function OGSGame:position_at(n)
+    if not self.loaded or not self.raw_data then return nil end
+    n = math.max(0, math.min(n, #self.raw_moves))
+    local d = {}
+    for k, v in pairs(self.raw_data) do d[k] = v end
+    local moves = {}
+    for i = 1, n do moves[i] = self.raw_moves[i] end
+    d.moves, d.clock, d.phase, d.removed, d.winner, d.outcome, d.winner_color = moves, nil, "play", nil, nil, nil, nil
+    local tmp = OGSGame.new()
+    if not tmp:load(d) or tmp.desynced then return nil end
+    local rules = tmp.game.rules
+    local rows = {}
+    for r = 1, tmp.size do
+        rows[r] = {}
+        for c = 1, tmp.size do rows[r][c] = rules:get(c, r) or false end
+    end
+    local pm = tmp.game:position().moves
+    local lastm = pm[#pm]
+    local last
+    if lastm then last = lastm.col and { col = lastm.col, row = lastm.row, color = lastm.color } or { pass = true, color = lastm.color } end
+    return { board = rows, last = last, captures = rules:captures(), count = n }
 end
 
 function OGSGame:set_phase(p) self.phase = p end

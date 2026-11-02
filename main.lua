@@ -23,6 +23,8 @@ local GOReader = WidgetContainer:extend{
 
 function GOReader:init()
     self.side_cache = {}
+    local mok, mwhy = pcall(Env.migrate_root)                 -- files of an older version move to the hidden folder, once
+    if not mok then logger.warn("GOReader: moving files failed: " .. tostring(mwhy)) end
     require("goreader.ui.boardview").show_coordinates = function() return Env.coordinates_on() end
     if self.ui.menu then self.ui.menu:registerToMainMenu(self) end
     local ok, Dispatcher = pcall(require, "dispatcher")
@@ -52,7 +54,8 @@ end
 function GOReader:_is_go_book()
     local doc = self.ui and self.ui.document
     if not (doc and type(doc.file) == "string") then return false end
-    return doc.file:find("(GOReader)", 1, true) ~= nil or doc.file:find("/GOReader/books/", 1, true) ~= nil
+    return doc.file:find("(GOReader)", 1, true) ~= nil or doc.file:find("/.goreader/books/", 1, true) ~= nil
+        or doc.file:find("/GOReader/books/", 1, true) ~= nil
 end
 
 -- The top-right corner: where a tap leaves the book
@@ -272,7 +275,7 @@ function GOReader:_find_books()
     local LibraryBooks = require("goreader.book.library_books")
     local Archiver = require("ffi/archiver")
     local cache = load_cache()
-    local list = LibraryBooks.list{ root = LIBRARY_ROOT, books_dir = Booklist.DEFAULT_DIR, lfs = lfs, archiver = Archiver, cache = cache }
+    local list = LibraryBooks.list{ root = LIBRARY_ROOT, extra_roots = { Booklist.DEFAULT_DIR }, books_dir = Booklist.DEFAULT_DIR, lfs = lfs, archiver = Archiver, cache = cache }
     save_cache(cache)
     return list
 end
@@ -461,7 +464,9 @@ function GOReader:_tree()
             { text = "Board coordinates", icon = "coordinates", what = "board coordinates", run = function(up) up(); Env.set_coordinates() end },
             { text = "Button pause", icon = "pause", what = "button pause", run = function(up) up(); Env.set_button_pause() end },
             { text = "Quick messages", icon = "chat", what = "quick messages", run = function(up) apps.quick:open(up) end },
+            { text = "Forget sign-ins", icon = "lock", what = "forget sign-ins", run = function(up) up(); Env.forget_logins() end },
             { text = "Optional features", icon = "switch", what = "optional features", run = function(up) up(); Env.set_features() end },
+            { text = "Keep awake", icon = "sun", what = "keep awake", run = function(up) up(); Env.set_keep_awake() end },
             { text = "Connection test", icon = "check", what = "ogs test", run = function(up) apps.ogs:connection_test(up) end },
         } },
     }

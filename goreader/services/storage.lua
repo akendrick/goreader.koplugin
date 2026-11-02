@@ -2,7 +2,7 @@
     goreader/services/storage.lua - the game library on disk.
 
     * The library lives OUTSIDE the plugin folder (default
-      /mnt/onboard/GOReader) so a KOReader update cannot delete it.
+      /mnt/onboard/.goreader, a hidden folder KOReader does not list) so a KOReader update cannot delete it.
     * Every write is atomic (temp file, size check, rename) and reports
       failure instead of ignoring it.
     * File names built from player names are sanitised.
@@ -14,7 +14,7 @@
 local Storage = {}
 Storage.__index = Storage
 
-Storage.DEFAULT_ROOT = "/mnt/onboard/GOReader"
+Storage.DEFAULT_ROOT = "/mnt/onboard/.goreader"
 
 -- ---------------------------------------------------------------------------
 -- Filesystem adapters
@@ -104,7 +104,8 @@ end
 -- Library
 -- ---------------------------------------------------------------------------
 
---[[ opts: root (default DEFAULT_ROOT), fs (default shell_fs()) ]]
+--[[ opts: root (default DEFAULT_ROOT), fs (default shell_fs()),
+            extra_import_dirs (more folders to take dropped .sgf files from, e.g. a visible one) ]]
 function Storage.new(opts)
     opts = opts or {}
     local root = (opts.root or Storage.DEFAULT_ROOT):gsub("/+$", "")
@@ -112,6 +113,7 @@ function Storage.new(opts)
         root = root,
         fs   = opts.fs or Storage.shell_fs(),
         dirs = { games = root .. "/games", import = root .. "/import", dgs = root .. "/dgs" },
+        extra_import_dirs = opts.extra_import_dirs or {},
     }, Storage)
 end
 
@@ -203,13 +205,17 @@ function Storage:delete_game(path)
     return true
 end
 
---[[ Move .sgf files dropped into import/ (e.g. over USB) into games/.
+--[[ Move .sgf files dropped into import/ (and any extra import folder), e.g. over USB, into games/.
      Returns moved_count, errors (list of strings).
 --]]
 function Storage:import_dropped()
     local moved, errors = 0, {}
     self:ensure()
-    for _, f in ipairs(self:list_games(self.dirs.import)) do
+    local files = self:list_games(self.dirs.import)
+    for _, dir in ipairs(self.extra_import_dirs) do
+        for _, f in ipairs(self:list_games(dir)) do files[#files + 1] = f end
+    end
+    for _, f in ipairs(files) do
         local base = Storage.sanitize(f.name:gsub("%.[sS][gG][fF]$", ""), "game")
         local dest = self:unique_path(self.dirs.games, base, ".sgf")
         local text, rerr = self:read(f.path)

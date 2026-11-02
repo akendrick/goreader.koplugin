@@ -8,11 +8,12 @@
 
     Every exit goes up one level: game -> My games -> this menu -> the home window.
     A move is always checked in the CONFIRM MOVE box before it is sent.
-    The password is kept in secrets.json on the reader (like the Dragon Go Server one).
+    The password is kept in a hidden file in KOReader's settings folder (like the Dragon Go Server one).
 --]]
 
 local UIManager  = require("ui/uimanager")
 local Env        = require("goreader.app.env")
+local Awake      = require("goreader.app.awake")
 local Session    = require("goreader.app.ogs_session")
 local Auth       = require("goreader.services.ogs_auth")
 local Controller = require("goreader.ui.ogs_controller")
@@ -239,11 +240,13 @@ function App:play(session, game_id, title, up)
         refresh_every = Env.settings():get("view.ogs_refresh_every"),
         quick_replies = Env.settings():get("ogs.quick_replies"),
         button_pause = Env.settings():get("view.ogs_button_pause"),
+        save = function(name, sgf, path) local p, err = Env.storage():save_game(sgf, name, path); if p then return true, p end return nil, err end,
         choose = Env.choice_dialog,
         ask_text = function(t, initial, ok_label, cb) Env.text_dialog(t, initial, ok_label, cb, false) end,
     }
     ctl:open()
-    local screen = GameScreen:new{ controller = ctl, on_close = up }
+    local awake = Env.keep_awake_on() and Awake.start() or nil
+    local screen = GameScreen:new{ controller = ctl, on_close = function() Awake.stop(awake); up() end }
     ctl.on_change = function() screen:update() end
     UIManager:show(screen)
     UIManager:setDirty(nil, "full")

@@ -46,6 +46,11 @@ GOReader opens from KOReader's main menu (first entry) and shows a 4x4 grid of t
 (SGF editor, vs Player, vs Computer), OGS (Play, Watch, Chat), Dragon Go Server, Saved games,
 Go books, Joseki and Settings. Every exit goes up one level.
 
+In an OGS game, **Replay** (watchers and finished games; **More** while playing) steps through the moves
+from the beginning, or the last 20 or 10 moves, with Pause/Play, Back, Next and Live; **Save** writes the game to
+Saved games to play out variations later. In a Dragon Go Server game, **Chat** shows earlier comments and sends a
+message with your next move or as a private message; **+** on the DGS list shows open games to join.
+
 Settings (second-level tiles; values in `GOReader/settings.json`):
 
 * **Wi-Fi** opens the network list.
@@ -54,13 +59,19 @@ Settings (second-level tiles; values in `GOReader/settings.json`):
 * **Button pause** (`view.ogs_button_pause`, off or 0.5-5 s, default 1): in a live OGS game the
   buttons are ignored from CONFIRM MOVE until the server returns the move, and this long after.
   Reload always works.
+* **Keep awake** (`ogs.keep_awake`, default on): while a live OGS game is open the reader does not go
+  to sleep (so Wi-Fi stays connected); it signals activity once a minute and sleeps as usual after you leave.
 * **Quick messages** (`ogs.quick_replies`): the one-tap OGS chat messages; create, edit, delete,
   or go back to the standard set.
+* **Forget sign-ins**: removes the saved Dragon Go Server and OGS names and passwords. They are kept in a hidden
+  file in KOReader's settings folder, not in the GOReader folder.
 * **Connection test**: a step-by-step report of reaching OGS.
 
-Files it reads or writes under `/mnt/onboard/GOReader`: `games/` (saved games, including Dragon Go
-Server games as `dgs-<opponent>-<id>.sgf`), `books/` (prepared Go books), `joseki/kjd.sgf`,
-`problems/`, `bin/gnugo`, `settings.json`, `secrets.json`, `dgs-index.json`, `bookcache.json`.
+Files live in a hidden folder, `/mnt/onboard/.goreader` (not listed by KOReader or the Kobo): `games/` (saved games,
+including Dragon Go Server games as `dgs-<opponent>-<id>.sgf`), `books/` (prepared Go books), `joseki/kjd.sgf`,
+`problems/`, `bin/gnugo`, `settings.json`, `dgs-index.json`, `booklist.json`, `bookcache.json`. The saved passwords are
+in KOReader's settings folder (`goreader_secrets.json`). Games to import are dropped in the visible
+`/mnt/onboard/GOReader/import` folder. An older `/mnt/onboard/GOReader` folder is moved into the hidden one at start-up.
 
 ## Using it
 

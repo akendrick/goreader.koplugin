@@ -34,6 +34,8 @@ function Controller.new(opts)
         game = assert(opts.game), submit = opts.submit, refresh = opts.refresh,
         schedule = opts.schedule or function(fn) fn() end, notify = opts.notify or function() end,
         play_out = opts.play_out,          -- function(controller): opens the play-out board
+        chat = opts.chat,                  -- function(): the message window (a Chat button is shown when given)
+        pending_message = opts.pending_message,   -- function() -> text waiting to go with the next move, or nil
         phase = nil,                       -- nil | "options" (CANCEL / PLAY OUT / SUBMIT) | "confirm"
         busy = false, on_change = function() end,
     }, Controller)
@@ -67,7 +69,8 @@ function Controller:state()
     if g:staged() then
         local what = g:describe_staged()
         if self.phase == "confirm" then
-            st.bottom = { kind = "confirm", prompt = "Submit " .. what .. " to Dragon Go Server?",
+            local with = self.pending_message and self.pending_message()
+            st.bottom = { kind = "confirm", prompt = "Submit " .. what .. (with and " (with your message)" or "") .. " to Dragon Go Server?",
                           buttons = { { id = "cancel", label = "Cancel" }, { id = "confirm", label = "CONFIRM MOVE", style = "primary" } } }
         else
             st.bottom = { kind = "confirm", prompt = what .. ": what next?",
@@ -81,6 +84,7 @@ function Controller:state()
             { id = "next", label = ">", enabled = s.can_next }, { id = "last", label = ">|", enabled = s.can_next },
         }
         if g:can_move() then row[#row + 1] = { id = "pass", label = "Pass" } end
+        if self.chat then row[#row + 1] = { id = "chat", label = "Chat" } end
         row[#row + 1] = { id = "reload", label = "Refresh" }
         st.bottom = { kind = "buttons", rows = { row } }
     end
@@ -169,6 +173,8 @@ function Controller:button(id)
         if not g:begin_submit() then return end
         self.busy = true
         self.schedule(function() self:_do_submit() end)
+    elseif id == "chat" then
+        if self.chat then self.chat() end
     elseif id == "reload" then
         self.busy = true
         g.message = "Refreshing…"

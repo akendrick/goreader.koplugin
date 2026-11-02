@@ -9,7 +9,11 @@ local logger      = require("logger")
 
 local Env = {}
 
-Env.ROOT = "/mnt/onboard/GOReader"
+-- All of GOReader's files (saved games, books, settings, the engine) live in a hidden folder, so KOReader and
+-- the Kobo do not list them. Games copied over USB go into the visible drop box, which is emptied into games/.
+Env.ROOT = "/mnt/onboard/.goreader"
+Env.OLD_ROOT = "/mnt/onboard/GOReader"
+Env.DROP_BOX = Env.OLD_ROOT .. "/import"
 
 -- Run fn; a Lua error becomes a message on screen (and in the log), not a crash
 function Env.safe(what, fn, ...)
@@ -107,6 +111,31 @@ function Env.text_dialog(title, initial, ok_label, cb, multiline)
     dlg:onShowKeyboard()
 end
 
+--[[ A message window: the last lines of the conversation above, a keyboard and a box to type in.
+     cb(text) on the send button, cb(nil) on Cancel. `history` is the whole conversation (a "Read all"
+     button shows it in full when it is longer than the few lines shown). ]]
+function Env.write_message(title, history, ok_label, cb)
+    local InputDialog = require("ui/widget/inputdialog")
+    history = history or ""
+    local lines = {}
+    for l in (history .. "\n"):gmatch("([^\n]*)\n") do if l ~= "" then lines[#lines + 1] = l end end
+    local shown = {}
+    for i = math.max(1, #lines - 5), #lines do shown[#shown + 1] = lines[i] end
+    local description = #lines == 0 and "No messages yet." or table.concat(shown, "\n")
+    local dlg
+    local buttons = { { text = "Cancel", callback = function() UIManager:close(dlg); cb(nil) end } }
+    if #lines > #shown then
+        buttons[#buttons + 1] = { text = "Read all", callback = function() Env.show_text(title, history) end }
+    end
+    buttons[#buttons + 1] = { text = ok_label or "Send", is_enter_default = false, callback = function()
+        local t = dlg:getInputText() or ""
+        UIManager:close(dlg); cb(t) end }
+    dlg = InputDialog:new{ title = title, description = description, input = "", input_type = "text",
+        allow_newline = true, buttons = { buttons } }
+    UIManager:show(dlg)
+    dlg:onShowKeyboard()
+end
+
 -- A dialog with one button per choice: choices = { {id, label}, ... }; cb(id)
 function Env.choice_dialog(title, choices, cb)
     local ButtonDialog = require("ui/widget/buttondialog")
@@ -198,6 +227,20 @@ function Env.set_button_pause()
     show()
 end
 
+-- Settings > Keep awake: stay awake (and online) while a live OGS game is on screen
+function Env.keep_awake_on() return Env.settings():get("ogs.keep_awake") ~= false end
+
+function Env.set_keep_awake()
+    local s = Env.settings()
+    Env.choice_dialog("Keep awake during OGS games\nNow: " .. (Env.keep_awake_on() and "ON" or "OFF")
+        .. "\nOn stops the reader going to sleep (and losing Wi-Fi) while a live game is open.\nIt sleeps as usual once you leave the game.", {
+        { "on", "On" }, { "off", "Off" }, { "cancel", "Cancel" } }, function(choice)
+        if choice ~= "on" and choice ~= "off" then return end
+        s:set("ogs.keep_awake", choice == "on"); s:save()
+        Env.info("Keep awake is " .. (choice == "on" and "on" or "off") .. ".", 2)
+    end)
+end
+
 --[[ Optional parts of GOReader. Off until turned on here; when off they are not shown anywhere
      (home tiles, KOReader menu). `Env.FEATURES` lists them in the order shown. ]]
 Env.FEATURES = {
@@ -251,19 +294,79 @@ function Env.set_coordinates()
     end)
 end
 
+-- Settings > Forget sign-ins: remove every saved name and password (Dragon Go Server and OGS)
+function Env.forget_logins()
+    Env.choice_dialog("Forget the saved sign-ins?\nThe Dragon Go Server and OGS names and passwords are removed from this reader.", {
+        { "yes", "Forget them" }, { "no", "Keep them" } }, function(choice)
+        if choice ~= "yes" then return end
+        local s = Env.settings()
+        s:forget_secrets()
+        s:set("dgs.user", ""); s:set("ogs.user", ""); s:save()
+        Env.info("Saved sign-ins removed.", 2)
+    end)
+end
+
 function Env.info(text, timeout)
     UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end
 
 -- Settings and saved sign-ins (never passwords for OGS; the DGS password is
--- kept in secrets.json because the DGS quick API needs it for every login)
+-- kept in a hidden file in KOReader's settings folder because the DGS quick API needs it for every login)
+--[[ Move the files of an older version (/mnt/onboard/GOReader) into the hidden folder, once. The whole
+     folder is renamed; if the hidden folder already exists, only what is not there yet is moved. Then the
+     visible drop box is made again. Returns true, or false + why.
+     opts (for tests): lfs, rename ]]
+function Env.migrate_root(opts)
+    opts = opts or {}
+    local lfs = opts.lfs or require("libs/libkoreader-lfs")
+    local rename = opts.rename or os.rename
+    local function is_dir(p) local a = lfs.attributes(p); return a ~= nil and a.mode == "directory" end
+    local old, new = Env.OLD_ROOT, Env.ROOT
+    local ok, why = true, nil
+    if is_dir(old) and not is_dir(new) then
+        local rok, rerr = rename(old, new)
+        if not rok then ok, why = false, "could not move " .. old .. ": " .. tostring(rerr) end
+    elseif is_dir(old) and is_dir(new) then
+        local names = {}
+        local dok, iter, state = pcall(lfs.dir, old)
+        if dok then for name in iter, state do names[#names + 1] = name end end
+        for _, name in ipairs(names) do
+            if name ~= "." and name ~= ".." and name ~= "import" and not lfs.attributes(new .. "/" .. name) then
+                local rok = rename(old .. "/" .. name, new .. "/" .. name)
+                if not rok then ok, why = false, "could not move " .. name end
+            end
+        end
+    end
+    if not is_dir(old) then lfs.mkdir(old) end
+    if not is_dir(Env.DROP_BOX) then lfs.mkdir(Env.DROP_BOX) end
+    return ok, why
+end
+
+-- The game library (saved games, imports); folders dropped into over USB are checked too
+function Env.storage()
+    if Env._storage then return Env._storage end
+    local lfs = require("libs/libkoreader-lfs")
+    local Storage = require("goreader.services.storage")
+    Env._storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs), extra_import_dirs = { Env.DROP_BOX } }
+    return Env._storage
+end
+
+-- Where the saved sign-ins live: KOReader's own settings folder (hidden; not listed as a book or file),
+-- or a hidden file in the GOReader folder when that is not available
+function Env.secrets_path()
+    local ok, DataStorage = pcall(require, "datastorage")
+    if ok and DataStorage and DataStorage.getSettingsDir then
+        local dir = DataStorage:getSettingsDir()
+        if type(dir) == "string" and dir ~= "" then return dir .. "/goreader_secrets.json" end
+    end
+    return Env.ROOT .. "/.goreader_secrets.json"
+end
+
 function Env.settings()
     if Env._settings then return Env._settings end
-    local lfs = require("libs/libkoreader-lfs")
-    local Storage  = require("goreader.services.storage")
     local Settings = require("goreader.services.settings")
-    local storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
-    local s = Settings.new{ storage = storage }
+    local storage = Env.storage()
+    local s = Settings.new{ storage = storage, secrets_file = Env.secrets_path() }
     s:load()
     Env._settings = s
     return s

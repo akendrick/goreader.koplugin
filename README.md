@@ -1,6 +1,6 @@
 # GOReader (beta) for KOReader
 
-**A Go (weiqi / baduk) plugin for KOReader, built for e-ink readers. Version 0.1.2-beta.**
+**A Go (weiqi / baduk) plugin for KOReader, built for e-ink readers. Version 0.1.3-beta.**
 
 Mainly a Go playing and recording app, with online play on OGS and an interactive Go book reader.
 Written and tested on a Kobo Forma; other KOReader devices may work but are untested.
@@ -19,7 +19,7 @@ A home screen of tiles (open it from KOReader's main menu, first entry: **GORead
   * **Chat**: read a chat room.
 * **Saved games**: thumbnails of your games (about move 40, players and result), with a review screen: variations, comments, your own notes.
 * **Go books**: interactive diagrams in Go books (see below), shown as a grid of covers.
-* **Settings**: Wi-Fi networks, screen refresh, button pause, quick messages, optional features.
+* **Settings**: Wi-Fi networks, screen refresh, button pause, keep awake, quick messages, optional features.
 
 Optional features, off until switched on in **Settings > Optional features**:
 **Dragon Go Server** (your games, play with a confirm step) and the **Joseki dictionary** (experimental beta).
@@ -39,13 +39,17 @@ takes a while and later opens are quick. In a book, tap the top-right corner, or
 
 On a Kobo the folder is `/mnt/onboard/.adds/koreader/plugins/goreader.koplugin`.
 
-GOReader keeps its files in `GOReader/` on the reader (`/mnt/onboard/GOReader` on a Kobo): saved games,
-prepared books, settings. A KOReader update does not touch them.
+GOReader keeps its files in a hidden folder, `.goreader/` on the reader (`/mnt/onboard/.goreader` on a Kobo): saved
+games, prepared books, settings, the engine. KOReader and the Kobo do not list it, and a KOReader update does not
+touch it. Saved passwords are kept separately, in a hidden file in KOReader's settings folder.
+To add games over USB, copy `.sgf` files into the visible `GOReader/import` folder (GOReader creates it); they are
+moved into your saved games the next time you open Saved games. An older `GOReader/` folder from a previous version
+is moved into the hidden folder automatically.
 
 ### Optional extras
 
-* **GNU Go** for *vs Computer*: put an ARM build of the `gnugo` program at `GOReader/bin/gnugo`.
-* **Kogo's Joseki Dictionary** for the joseki screen: put `kjd.sgf` at `GOReader/joseki/kjd.sgf`. It is not
+* **GNU Go** for *vs Computer*: put an ARM build of the `gnugo` program at `.goreader/bin/gnugo`.
+* **Kogo's Joseki Dictionary** for the joseki screen: put `kjd.sgf` at `.goreader/joseki/kjd.sgf`. It is not
   included here; check its terms of use.
 
 ## Status

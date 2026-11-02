@@ -39,6 +39,9 @@ end
 -- MOVE must not land on the buttons beneath it. 0 = no extra pause.
 Controller.AFTER_ECHO_SECONDS = 1
 
+-- A replay steps to the next move this often (seconds)
+Controller.REPLAY_SECONDS = 2
+
 -- One-tap chat messages (a person types slowly on e-ink): your own list, from Settings
 Controller.QUICK_REPLIES = QM.DEFAULTS
 
@@ -62,6 +65,7 @@ function Controller.new(opts)
         title = opts.title, show_text = opts.show_text or function() end,
         choose = opts.choose or function() end, ask_text = opts.ask_text or function() end,
         quick_replies = opts.quick_replies or QM.DEFAULTS, clock = opts.clock or wall_clock, ignore_until = nil,
+        save = opts.save, replay = nil, saved_path = nil,
         button_pause = opts.button_pause or Controller.AFTER_ECHO_SECONDS,
         message = nil, sending = false, asked_undo = false,
         now = opts.now or os.time, live_clocks = false, region_refresh = true, refresh_every = opts.refresh_every or 10, moves_since_full = 0, want_full = false, dirty = true, chat_dirty = false, last_draw = nil, last_chat_draw = nil, last_reconnect = nil,
@@ -182,6 +186,29 @@ function Controller:state()
     local lm = Last.text(st.board.last, size, g:move_count())
     local staged = play.staged
 
+    if self.replay then
+        local r = self.replay
+        if not r.cache or r.cache.count ~= r.pos then r.cache = g:position_at(r.pos) end
+        if not r.cache then
+            self.replay = nil                                 -- could not build the position: back to the live game
+            self.message = "The replay could not be shown."
+        else
+            local pos = r.cache
+            st.board.board, st.board.last = pos.board, pos.last
+            st.black.captures, st.white.captures = pos.captures.B, pos.captures.W
+            st.to_move = nil
+            st.counter = r.pos .. " / " .. g:move_count()
+            st.status = "Replay: move " .. r.pos .. " of " .. g:move_count() .. (r.playing and "" or "  ·  paused")
+            st.comment = chat_text(play.chat:recent(3)); st.comment_bottom = true
+            st.bottom.rows = { {
+                { id = "rstop", label = "Live", style = "primary" },
+                { id = "rplay", label = r.playing and "Pause" or "Play" },
+                { id = "rprev", label = "‹ Back", enabled = r.pos > 0 },
+                { id = "rnext", label = "Next ›", enabled = r.pos < g:move_count() } } }
+            return st
+        end
+    end
+
     if self.session.state ~= "open" then st.status = "Connection lost. Reconnecting…"
     elseif g.desynced then st.status = "Out of step with the server, reloading…"
     elseif g.phase == "finished" then st.status = "Finished" .. (g:result() and (": " .. g:result()) or "")
@@ -208,7 +235,8 @@ function Controller:state()
     else
         local tc = g.time_control or {}
         st.status = "Watching live" .. (tc.system and ("  ·  " .. tc.system) or "")
-        if lm and g.phase == "play" then st.status = st.status .. "  ·  last: " .. lm end
+        if self.message then st.status = self.message
+        elseif lm and g.phase == "play" then st.status = st.status .. "  ·  last: " .. lm end
     end
 
     local lines = play.chat:recent(3)
@@ -235,12 +263,14 @@ function Controller:state()
         -- Undo and Resign are on the left, away from the right-hand side where CONFIRM MOVE was, so a
         -- second tap on a slow screen does not land on them. Reload and Chat are on the right.
         row = { { id = "undo", label = "Undo", enabled = g:move_count() > 0 }, { id = "resign", label = "Resign" },
-                { id = "pass", label = "Pass", enabled = play:can_move() }, { id = "reload", label = "Reload" }, chat_button }
+                { id = "pass", label = "Pass", enabled = play:can_move() }, { id = "more", label = "More" },
+                { id = "reload", label = "Reload" }, chat_button }
     elseif player and g.phase == "stone removal" then
         row = { { id = "resign", label = "Resign" }, { id = "accept", label = "Accept", style = "primary" },
-                { id = "reload", label = "Reload" }, chat_button }
+                { id = "more", label = "More" }, { id = "reload", label = "Reload" }, chat_button }
     else
-        row = { { id = "reload", label = "Reload" }, chat_button }
+        row = { { id = "replay", label = "Replay", enabled = g:move_count() > 0 }, { id = "save", label = "Save" },
+                { id = "reload", label = "Reload" }, chat_button }
     end
     st.bottom.rows = { row }
     return st
@@ -254,6 +284,7 @@ function Controller:board_tap(col, row)
     local play = self.play
     local g = play.game
     if not g.loaded or play:role() ~= "player" then return end        -- spectators cannot move
+    if self.replay then self.message = "Press Live to leave the replay first."; return end
     self.message = nil
     if g.phase == "play" then
         local ok, why = play:stage(col, row)
@@ -322,7 +353,18 @@ function Controller:button(id)
     local play = self.play
     if id ~= "reload" and (self.sending or (self.ignore_until and self.clock() < self.ignore_until)) then return end
     self.message = nil
-    if id == "chat" then
+    if self.replay and id ~= "chat" and id ~= "reload" then return self:replay_button(id) end
+    if id == "replay" then
+        self:ask_replay()
+    elseif id == "save" then
+        self:save_game()
+    elseif id == "more" then
+        self.choose("This game", { { "replay", "Replay the game…" }, { "save", "Save the game" }, { "cancel", "Cancel" } }, function(c)
+            if c == "replay" then self:ask_replay() elseif c == "save" then self:save_game() end
+            self.dirty = true
+            self.on_change()
+        end)
+    elseif id == "chat" then
         self:chat_menu()
     elseif id == "reload" then
         play:open(self.game_id)
@@ -356,6 +398,83 @@ function Controller:button(id)
         local ok, why = play.ogs:accept_removed(self.game_id, play.game:removed_text())
         self.message = ok and "Accepted. Waiting for your opponent." or ("Could not accept: " .. tostring(why))
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Replay: watch the moves again, from the start or just the last few
+-- ---------------------------------------------------------------------------
+
+function Controller:ask_replay()
+    local total = self.play.game:move_count()
+    if total == 0 then self.message = "There are no moves to replay yet."; self.on_change(); return end
+    self.choose("Replay", {
+        { "all", "From the beginning" }, { "20", "The last 20 moves" }, { "10", "The last 10 moves" }, { "cancel", "Cancel" } }, function(c)
+        local n = c == "all" and total or tonumber(c)
+        if c == "all" then self:start_replay(0)
+        elseif n then self:start_replay(math.max(0, total - n)) end
+        self.dirty = true
+        self.on_change()
+    end)
+end
+
+function Controller:start_replay(from)
+    self.replay = { pos = from, from = from, playing = true, last_step = self.clock() }
+    self.want_full = true                                      -- start from a clean screen
+end
+
+function Controller:stop_replay(message)
+    self.replay = nil
+    self.message = message
+    self.want_full = true
+end
+
+function Controller:replay_button(id)
+    local r, total = self.replay, self.play.game:move_count()
+    if id == "rstop" then self:stop_replay()
+    elseif id == "rplay" then r.playing = not r.playing; r.last_step = self.clock()
+    elseif id == "rprev" then r.pos = math.max(0, r.pos - 1); r.playing = false
+    elseif id == "rnext" then
+        r.pos = r.pos + 1; r.playing = false
+        if r.pos >= total then self:stop_replay("Back to the live game.") end
+    end
+    self.dirty = true
+end
+
+-- The next step of a playing replay (called from tick)
+function Controller:_replay_step()
+    local r = self.replay
+    if not r or not r.playing then return false end
+    local now = self.clock()
+    if now - r.last_step < Controller.REPLAY_SECONDS then return false end
+    r.last_step = now
+    r.pos = r.pos + 1
+    if r.pos >= self.play.game:move_count() then self:stop_replay("Replay finished. Back to the live game."); return true end
+    return true
+end
+
+-- ---------------------------------------------------------------------------
+-- Save the game (watched or played) into Saved games, to look at or play out variations later
+-- ---------------------------------------------------------------------------
+
+function Controller.save_name(g, game_id)
+    local b, w = g.players.B.name or "black", g.players.W.name or "white"
+    return string.format("ogs-%s-vs-%s-%s", b, w, tostring(game_id))
+end
+
+function Controller:save_game()
+    local g = self.play.game
+    if not g.loaded or g:move_count() == 0 then self.message = "There is nothing to save yet."; self.dirty = true; return end
+    if not self.save then self.message = "Saving is not available."; self.dirty = true; return end
+    local sgf = g:to_sgf()
+    if not sgf then self.message = "Could not make a record of this game."; self.dirty = true; return end
+    local ok, path = self.save(Controller.save_name(g, self.game_id), sgf, self.saved_path)
+    if ok then
+        self.saved_path = path
+        self.message = "Saved to Saved games (" .. g:move_count() .. " moves)."
+    else
+        self.message = "Could not save: " .. tostring(path)
+    end
+    self.dirty = true
 end
 
 function Controller:show_comment() self:button("chat") end
@@ -404,6 +523,7 @@ function Controller:tick(now)
         s:pump()
     end
     self:_prompts()
+    if self:_replay_step() then self.dirty = true end
     local chat_due = self.chat_dirty and (not self.last_chat_draw or now - self.last_chat_draw >= Controller.CHAT_REDRAW_SECONDS)
     if self.dirty or chat_due then
         if self.chat_dirty then self.last_chat_draw = now end      -- the strip is redrawn along with the board

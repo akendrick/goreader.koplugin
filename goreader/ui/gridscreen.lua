@@ -10,6 +10,7 @@
             buttons = { {id="list", label="List"}, {id="reload", label="Reload"} },   -- after Prev / page / Next
             on_button = fn(id),                 (on_list / on_reload still work for those two)
             cols = 2, rows = 3, compact = false, -- compact: smaller caption text
+            header_button = "+", on_header = fn(),  -- a button at the top right (e.g. "+")
             borders = true,                      -- false: no frame around each cell
             title_scale = 1, subtitle_scale = 1, -- multiply the caption text sizes (0.7 = 30% smaller)
             empty_text = nil,                    -- shown when there are no items
@@ -32,14 +33,14 @@ local Icons          = require("goreader.ui.icons")
 local Grid = InputContainer:extend{
     name = "goreader_grid", title = "", items = {}, cols = 2, rows = 3,
     page = 1, on_select = nil, on_list = nil, on_reload = nil, on_close = nil,
-    buttons = nil, on_button = nil, compact = false, borders = true, title_scale = 1, subtitle_scale = 1, empty_text = nil,
+    buttons = nil, on_button = nil, compact = false, borders = true, header_button = nil, on_header = nil, title_scale = 1, subtitle_scale = 1, empty_text = nil,
 }
 
 --[[ Pure layout. Returns { header, footer, cells = { {x,y,w,h, board = {x,y,w}, caption = {x,y,w,h}} ... }, per_page } ]]
 function Grid.layout(sw, sh, cols, rows, dp)
     dp = dp or function(n) return n end
     local pad = dp(10)
-    local header_h, footer_h = dp(64), dp(84)
+    local header_h, footer_h = dp(44), dp(84)          -- the header matches the game screens' (smaller than it was)
     local caption_h = dp(70)
     local top = header_h + pad
     local cell_w = math.floor((sw - (cols + 1) * pad) / cols)
@@ -151,10 +152,15 @@ function Grid:paintTo(bb, x, y)
     self._rects = { cells = {}, buttons = {} }
 
     -- header
-    local hpx = math.floor(L.header.h * 0.44)
+    local hpx = math.floor(L.header.h * 0.42)
     self._rects.back = { x = x, y = y, w = L.header.h * 1.8, h = L.header.h }
     Kit.text_left(bb, x + Kit.dp(12), y + L.header.h / 2, "‹ Back", hpx, Kit.BLACK, true)
-    Kit.text_centered(bb, x + self.sw / 2, y + L.header.h / 2, Kit.fit(bb, self.title, hpx, self.sw - 2 * L.header.h * 1.8, true), hpx, Kit.BLACK, true)
+    local side = L.header.h * 1.8
+    if self.header_button then
+        self._rects.header_button = { x = x + self.sw - side, y = y, w = side, h = L.header.h }
+        Kit.text_right(bb, x + self.sw - Kit.dp(18), y + L.header.h / 2, self.header_button, math.floor(L.header.h * 0.62), Kit.BLACK, true)
+    end
+    Kit.text_centered(bb, x + self.sw / 2, y + L.header.h / 2, Kit.fit(bb, self.title, hpx, self.sw - 2 * side, true), hpx, Kit.BLACK, true)
     Kit.fill(bb, x, y + L.header.h - 2, self.sw, 2, Kit.BLACK)
 
     if #self.items == 0 and self.empty_text then
@@ -186,6 +192,10 @@ end
 function Grid:onTap(_, ges)
     local p = ges.pos
     if self._rects.back and Kit.hit({ self._rects.back }, p.x, p.y) then self:close(); return true end
+    if self._rects.header_button and Kit.hit({ self._rects.header_button }, p.x, p.y) then
+        if self.on_header then self:_leave(self.on_header) end
+        return true
+    end
     local b = Kit.hit(self._rects.buttons, p.x, p.y)
     if b then
         if b.enabled == false or b.id == "page" then return true end

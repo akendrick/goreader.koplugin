@@ -187,6 +187,16 @@ PICTURES.pause = function(d)       -- the button pause: two bars in a circle
     bb:paintRect(math.floor(u(54)), math.floor(u(30, true)), math.floor(u(11, nil, true)), math.floor(u(40, nil, true)), Kit.BLACK)
 end
 
+PICTURES.sun = function(d)         -- keep awake: a sun
+    local bb, u, w = d.bb, d.u, d.w
+    bb:paintCircle(math.floor(u(50)), math.floor(u(50, true)), math.floor(u(20, nil, true)), Kit.BLACK)
+    local rays = { { 0, -1 }, { 0.7, -0.7 }, { 1, 0 }, { 0.7, 0.7 }, { 0, 1 }, { -0.7, 0.7 }, { -1, 0 }, { -0.7, -0.7 } }
+    for _, r in ipairs(rays) do
+        line(bb, u(50) + r[1] * u(32, nil, true), u(50, true) + r[2] * u(32, nil, true),
+                 u(50) + r[1] * u(45, nil, true), u(50, true) + r[2] * u(45, nil, true), w, Kit.BLACK)
+    end
+end
+
 PICTURES.switch = function(d)      -- an on/off switch (optional features)
     local bb, u, w, bg = d.bb, d.u, d.w, d.bg
     Kit.border(bb, u(8), u(30, true), u(84, nil, true), u(40, nil, true), w, Kit.BLACK)
@@ -202,6 +212,14 @@ PICTURES.coordinates = function(d)  -- a board corner with its letters and numbe
     end
     for i, t in ipairs({ "A", "B", "C" }) do Kit.text_centered(bb, u(10 + i * 26), u(16, true), t, math.floor(u(20, nil, true)), Kit.BLACK, true) end
     for i, t in ipairs({ "1", "2", "3" }) do Kit.text_centered(bb, u(14), u(10 + i * 26, true), t, math.floor(u(20, nil, true)), Kit.BLACK, true) end
+end
+
+PICTURES.lock = function(d)         -- a padlock (saved sign-ins)
+    local bb, u, w, bg = d.bb, d.u, d.w, d.bg
+    ring(bb, u(50), u(40, true), u(24, nil, true), math.max(4, w + 1), Kit.BLACK, bg)
+    bb:paintRect(math.floor(u(16)), math.floor(u(48, true)), math.floor(u(68, nil, true)), math.floor(u(44, nil, true)), Kit.BLACK)
+    bb:paintCircle(math.floor(u(50)), math.floor(u(66, true)), math.floor(u(7, nil, true)), bg)
+    bb:paintRect(math.floor(u(47)), math.floor(u(66, true)), math.max(3, math.floor(u(6, nil, true))), math.floor(u(14, nil, true)), bg)
 end
 
 Icons.NAMES = {}

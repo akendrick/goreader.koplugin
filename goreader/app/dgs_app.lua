@@ -20,7 +20,7 @@ local PlayOut    = require("goreader.ui.playout_controller")
 local App = {}
 App.__index = App
 
-function App.new(opts) return setmetatable({ client = nil, home = opts and opts.home }, App) end
+function App.new(opts) return setmetatable({ client = nil, home = opts and opts.home, pending_msgs = {} }, App) end
 
 -- Leaving anything returns to the GOReader home window
 function App:go_home() if self.home then self.home() end end
@@ -119,8 +119,7 @@ end
 
 function App:storage()
     if not self._storage then
-        local lfs = require("libs/libkoreader-lfs")
-        self._storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+        self._storage = Env.storage()
     end
     return self._storage
 end
@@ -243,6 +242,11 @@ function App:show_grid(client, games, up)
             on_select = function(item)
                 Env.safe("open game", function() self:open_game(client, item.row, function() self:open(up) end) end)
             end,
+            header_button = "+",
+            on_header = function()
+                self:waiting_room(client, function() self:show_grid(client, games, up) end,
+                    function() self:open(up) end)                       -- after joining: your games, loaded again
+            end,
             on_list = function() self:show_list(client, games, up) end,
             on_reload = function() self.reload_all = true; self:open(up) end,
             on_close = up,
@@ -270,6 +274,130 @@ function App:show_list(client, games, up)
 end
 
 -- ---------------------------------------------------------------------------
+-- Chat with your opponent
+--   DGS has no separate chat in a game: a message goes with a move (shown as a comment on that move),
+--   or you can send the player a private message. The conversation so far is the comments in the game.
+-- ---------------------------------------------------------------------------
+
+-- The comments on the moves of a game, as lines: "#12 White: nice move"
+function App.chat_history(sgf_text)
+    local game = sgf_text and SGF.parse(sgf_text)
+    if not game then return "" end
+    local lines = {}
+    local node, n = game.root.children[1], 1
+    while node do
+        local c = node:get("C", "")
+        if c ~= "" then
+            local who = node.props.B and "Black" or (node.props.W and "White" or "")
+            lines[#lines + 1] = "#" .. n .. (who ~= "" and (" " .. who) or "") .. ": " .. c:gsub("%s*\n%s*", " ")
+        end
+        node, n = node.children[1], n + 1
+    end
+    return table.concat(lines, "\n")
+end
+
+function App:chat(client, row, my_turn)
+    local gid, opp = row.game.id, row.opponent or "your opponent"
+    local history = App.chat_history(self:store():read_local(opp, gid))
+    local pending = self.pending_msgs[gid]
+    local title = "Message to " .. opp
+    if pending then history = history .. (history ~= "" and "\n" or "") .. "(waiting to go with your next move) " .. pending end
+    Env.write_message(title, history, "Next", function(text)
+        if text == nil then return end
+        text = text:match("^%s*(.-)%s*$")
+        if text == "" then return end
+        local choices = {}
+        if my_turn then choices[#choices + 1] = { "move", "Send with my next move" } end
+        choices[#choices + 1] = { "pm", "Send now as a private message" }
+        choices[#choices + 1] = { "cancel", "Cancel" }
+        Env.choice_dialog("\"" .. text .. "\"", choices, function(c)
+            if c == "move" then
+                self.pending_msgs[gid] = text
+                Env.info("Your message will go with your next move.", 3)
+            elseif c == "pm" then
+                Env.with_progress("Sending the message…", function()
+                    local ok, err = retrying(client, function() return client:send_message(opp, "Game #" .. gid, text) end)
+                    Env.info(ok and "Message sent." or ("Could not send the message (" .. tostring(err) .. ")."), 3)
+                end)
+            end
+        end)
+    end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Open games (the waiting room): the "+" at the top of your games
+-- ---------------------------------------------------------------------------
+
+App.SORTS = {
+    { "rank", "rank, strongest first" }, { "rank_weak", "rank, weakest first" },
+    { "size", "board size" }, { "time", "time" }, { "name", "name" },
+}
+
+function App:waiting_room(client, back, after_join, order)
+    Env.with_progress("Looking for open games…", function()
+        local offers, err = retrying(client, function() return client:waiting_room(true) end)
+        if not offers then Env.info("Could not load the open games (" .. tostring(err) .. ")."); return back() end
+        if #offers == 0 then Env.info("There are no open games you can join right now."); return back() end
+        self:show_offers(client, offers, back, order or "rank", after_join)
+    end)
+end
+
+function App:show_offers(client, offers, back, order, after_join)
+    local Menu = require("ui/widget/menu")
+    DGS.sort_offers(offers, order)
+    local label
+    for _, sd in ipairs(App.SORTS) do if sd[1] == order then label = sd[2] end end
+    local items = { { text = "Sorted by " .. (label or order) .. "   (tap to change)", mandatory = "", sort = true } }
+    for _, o in ipairs(offers) do
+        items[#items + 1] = { text = DGS.offer_line(o), offer = o,
+            mandatory = (o.rated and "rated" or "free") .. (o.handicap > 0 and ("  H" .. o.handicap) or "") }
+    end
+    local menu
+    menu = Menu:new{
+        title = "Open games  (" .. #offers .. ")", item_table = items, items_per_page = 12,
+        covers_fullscreen = true, is_borderless = true, is_popout = false, title_multilines = false,
+        onMenuSelect = function(_, item)
+            UIManager:close(menu)
+            if item.sort then
+                local nxt = App.SORTS[1][1]
+                for i, sd in ipairs(App.SORTS) do if sd[1] == order then nxt = App.SORTS[i % #App.SORTS + 1][1] end end
+                return self:show_offers(client, offers, back, nxt, after_join)
+            end
+            Env.safe("open game", function() self:offer_details(client, item.offer, function() self:show_offers(client, offers, back, order, after_join) end, after_join or back) end)
+        end,
+        close_callback = function() UIManager:close(menu); back() end,
+    }
+    UIManager:show(menu)
+end
+
+function App.offer_text(o)
+    local lines = { DGS.offer_line(o) }
+    lines[#lines + 1] = (o.rated and "Rated" or "Free") .. "  ·  handicap " .. o.handicap .. (o.komi and ("  ·  komi " .. tostring(o.komi)) or "")
+        .. (o.ruleset and ("  ·  " .. tostring(o.ruleset):lower()) or "")
+    if type(o.comment) == "string" and o.comment ~= "" then lines[#lines + 1] = "\"" .. o.comment .. "\"" end
+    if not o.joinable then lines[#lines + 1] = "(DGS says you may not be able to join this one)" end
+    return table.concat(lines, "\n")
+end
+
+--[[ One open game: the details and a Join button. `back_list` shows the list again; `after_join` is where
+     you go once you have joined (your games, reloaded). ]]
+function App:offer_details(client, offer, back_list, after_join)
+    Env.choice_dialog(App.offer_text(offer), { { "join", "Join this game" }, { "back", "Back to the list" } }, function(c)
+        if c ~= "join" then return back_list() end
+        Env.with_progress("Joining the game…", function()
+            local ok, err = retrying(client, function() return client:join_waiting_room(offer.id) end)
+            if ok then
+                self.reload_all = true
+                Env.info("You joined the game with " .. tostring(offer.handle) .. ". It is in your games now.", 3)
+                return after_join()
+            end
+            Env.info(DGS.JOIN_ERRORS[tostring(err)] or ("Could not join (" .. tostring(err) .. ")."))
+            back_list()
+        end)
+    end)
+end
+
+-- ---------------------------------------------------------------------------
 -- One game
 -- ---------------------------------------------------------------------------
 
@@ -280,7 +408,7 @@ function App:open_game(client, row, back)
         local sgf, err = self:game_sgf(client, row)
         if not sgf then Env.info("Could not load the game (" .. tostring(err) .. ")."); back(); return end
         -- Nothing for you to do here: open it as a replay of the game
-        if not row.my_turn then return self:open_replay(row, sgf, back) end
+        if not row.my_turn then return self:open_replay(row, sgf, back, client) end
         local game, gerr = DGSGame.new{ sgf = sgf, my_color = row.my_color, gid = gid,
                                         move_id = row.game.move_id, opponent = row.opponent }
         if not game then Env.info("Cannot show this game: " .. tostring(gerr)); return end
@@ -288,10 +416,15 @@ function App:open_game(client, row, back)
         local ctl = Controller.new{
             game = game,
             submit = function(p)
-                return retrying(client, function()
-                    return client:submit_move(p.gid, p.move_id, p.col, p.row, p.size)
+                local msg = self.pending_msgs[p.gid]                 -- a message written in Chat goes with the move
+                local ok, err = retrying(client, function()
+                    return client:submit_move(p.gid, p.move_id, p.col, p.row, p.size, msg)
                 end)
+                if ok then self.pending_msgs[p.gid] = nil end
+                return ok, err
             end,
+            chat = function() self:chat(client, row, true) end,
+            pending_message = function() return self.pending_msgs[gid] end,
             refresh = function()
                 local new_sgf = retrying(client, function() return client:download_sgf(gid) end)
                 if not new_sgf then return nil, "download failed" end
@@ -318,8 +451,7 @@ end
 function App:play_out(dgs_ctl, row)
     local game = dgs_ctl.game
     local staged = game:staged()
-    local lfs = require("libs/libkoreader-lfs")
-    local storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+    local storage = Env.storage()
     local TreeView = require("goreader.ui.treeview")
     local po
     po = PlayOut.new{
@@ -349,16 +481,16 @@ function App:play_out(dgs_ctl, row)
 end
 
 -- A game that is not waiting on you: replay it (opens on the latest move, or move 40 if it is finished)
-function App:open_replay(row, sgf, back)
+function App:open_replay(row, sgf, back, client)
     back = back or function() self:go_home() end
     local game = SGF.parse(sgf)
     if not game then Env.info("This game could not be read."); return back() end
     local model = ReviewModel.new{ game = game }
     model:go_to_start_position()                  -- latest move, or move 40 for a finished game
-    local lfs = require("libs/libkoreader-lfs")
-    local storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+    local storage = Env.storage()
     local ctl = ReviewController.new{
         model = model, title = row.opponent .. "  ·  replay",
+        chat = client and function() self:chat(client, row, false) end or nil,
         edit_note = function(initial, cb)
             local InputDialog = require("ui/widget/inputdialog")
             local dlg

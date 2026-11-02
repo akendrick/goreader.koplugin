@@ -123,6 +123,15 @@ end
 function Lib.list(opts)
     local lfs, cache = opts.lfs, opts.cache or {}
     local found = Lib.find_epubs(opts.root, lfs)
+    -- more places to look: folders the walk above skips because they are hidden (the prepared books)
+    local seen = {}
+    for _, f in ipairs(found) do seen[f.path] = true end
+    for _, extra in ipairs(opts.extra_roots or {}) do
+        for _, f in ipairs(Lib.find_epubs(extra, lfs)) do
+            if not seen[f.path] then seen[f.path] = true; found[#found + 1] = f end
+        end
+    end
+    table.sort(found, function(a, b) return a.path < b.path end)
     local prepared_by_title, originals = {}, {}
     local out = {}
     for i, f in ipairs(found) do

@@ -1,7 +1,7 @@
 --[[
     goreader/app/problems_app.lua - Go problems (tsumego).
 
-    Problem sets are SGF files in /mnt/onboard/GOReader/problems: copy any
+    Problem sets are SGF files in /mnt/onboard/.goreader/problems: copy any
     collection there over USB (one game per problem: set-up stones, who plays, and
     the solution as a tree). A starter set of capture problems comes with GOReader.
     Which problems you have solved is remembered in problem-progress.json.

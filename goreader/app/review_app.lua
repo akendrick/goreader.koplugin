@@ -3,7 +3,7 @@
     searchable) and the review screen with comments, variations, engine
     annotations and your own notes.
 
-    Files live in /mnt/onboard/GOReader/games; drop new ones into
+    Files live in the hidden folder /mnt/onboard/.goreader/games; drop new ones into the visible
     /mnt/onboard/GOReader/import over USB and they are moved in on opening.
 --]]
 
@@ -25,8 +25,7 @@ function App:go_home() if self.home then self.home() end end
 
 function App:storage()
     if not self._storage then
-        local lfs = require("libs/libkoreader-lfs")
-        self._storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+        self._storage = Env.storage()
     end
     return self._storage
 end

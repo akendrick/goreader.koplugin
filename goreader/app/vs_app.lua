@@ -27,8 +27,7 @@ function App:go_home() if self.home then self.home() end end
 
 function App:storage()
     if not self._storage then
-        local lfs = require("libs/libkoreader-lfs")
-        self._storage = Storage.new{ root = Env.ROOT, fs = Storage.lfs_fs(lfs) }
+        self._storage = Env.storage()
     end
     return self._storage
 end

@@ -5,8 +5,11 @@
       against a schema, so a hand-edited or damaged file can never put the
       app in a state it cannot display.
     * A damaged file is kept as settings.json.bad and defaults are used.
-    * Passwords are never stored. Tokens (DGS session, OGS token) go in a
-      separate secrets.json, readable by the owner only where chmod works.
+    * Sign-ins (the Dragon Go Server and OGS passwords, which both services need
+      for every login) are kept apart from the settings, in a file in KOReader's own
+      settings folder (a hidden folder, so it is not listed as a book or a file in
+      KOReader). An older secrets.json in the GOReader folder is moved there and
+      wiped.
     * Online games always ask for CONFIRM MOVE; that is not a setting.
 --]]
 
@@ -51,6 +54,7 @@ Settings.SCHEMA = {
     ["ogs.chat"]         = { default = true,     check = is_bool },
     ["view.ogs_refresh_every"] = { default = 10, check = int_between(0, 100) },
     ["view.ogs_button_pause"] = { default = 1, check = half_seconds },
+    ["ogs.keep_awake"]   = { default = true,     check = is_bool },
     -- optional parts of GOReader, off until turned on in Settings > Optional features
     ["features.dgs"]     = { default = false, check = is_bool },
     ["features.joseki"]  = { default = false, check = is_bool },
@@ -67,13 +71,15 @@ local function copy(v)
 end
 
 --[[ opts: storage (services/storage), file (default root/settings.json),
-            secrets_file (default root/secrets.json) ]]
+            secrets_file (default the hidden root/.goreader_secrets.json; the app passes a file in
+            KOReader's settings folder), legacy_secrets_file (default root/secrets.json: moved away) ]]
 function Settings.new(opts)
     local st = assert(opts.storage, "storage is required")
     local self = setmetatable({
         storage = st,
         file = opts.file or (st.root .. "/settings.json"),
-        secrets_file = opts.secrets_file or (st.root .. "/secrets.json"),
+        secrets_file = opts.secrets_file or (st.root .. "/.goreader_secrets.json"),
+        legacy_secrets_file = opts.legacy_secrets_file or (st.root .. "/secrets.json"),
         values = {}, secrets = {}, warning = nil,
     }, Settings)
     for k, def in pairs(Settings.SCHEMA) do self.values[k] = copy(def.default) end
@@ -101,7 +107,37 @@ function Settings:load()
         local s = json.decode(stext)
         if type(s) == "table" and s[1] == nil then self.secrets = s end
     end
+    self:_move_legacy_secrets(stext ~= nil)
     return self.warning == nil, self.warning
+end
+
+--[[ An older version kept the sign-ins in secrets.json inside the GOReader folder, where KOReader lists
+     it. Move what it holds to the hidden file (unless that already has them) and wipe the old one. ]]
+function Settings:_move_legacy_secrets(have_new)
+    local old = self.legacy_secrets_file
+    if not old or old == self.secrets_file then return end
+    local text = self.storage:read(old)
+    if not text then return end
+    if not have_new then
+        local ok, s = pcall(json.decode, text)
+        if ok and type(s) == "table" and s[1] == nil and next(s) then
+            self.secrets = s
+            if not self:_write_secrets() then return end          -- could not write the new copy: keep the old one
+        end
+    end
+    -- overwrite, then remove (a plain delete leaves the text on the card)
+    self.storage:write(old, string.rep(" ", #text))
+    self.storage.fs.remove(old)
+end
+
+function Settings:_write_secrets()
+    local ok, err = self.storage:ensure()
+    if not ok then return nil, err end
+    local wok, werr = self.storage:write(self.secrets_file, json.encode(self.secrets))
+    if not wok then return nil, werr end
+    -- owner-only where the filesystem supports it (the Kobo's FAT volume does not)
+    os.execute("chmod 600 '" .. self.secrets_file:gsub("'", "'\\''") .. "' 2>/dev/null")
+    return true
 end
 
 function Settings:get(key)
@@ -132,7 +168,7 @@ function Settings:save()
 end
 
 -- ---------------------------------------------------------------------------
--- Secrets (tokens only; never passwords)
+-- Secrets (the saved sign-ins)
 -- ---------------------------------------------------------------------------
 
 function Settings:get_secret(name) return self.secrets[name] end
@@ -141,17 +177,14 @@ function Settings:set_secret(name, value)
     if type(name) ~= "string" or name == "" then return nil, "bad name" end
     if value ~= nil and type(value) ~= "string" then return nil, "bad value" end
     self.secrets[name] = value
-    local ok, err = self.storage:ensure()
-    if not ok then return nil, err end
-    local wok, werr = self.storage:write(self.secrets_file, json.encode(self.secrets))
-    if not wok then return nil, werr end
-    -- owner-only where the filesystem supports it (the Kobo's FAT volume does not)
-    os.execute("chmod 600 '" .. self.secrets_file:gsub("'", "'\\''") .. "' 2>/dev/null")
-    return true
+    return self:_write_secrets()
 end
 
+-- Forget every saved sign-in (and wipe the file)
 function Settings:forget_secrets()
     self.secrets = {}
+    local text = self.storage:read(self.secrets_file)
+    if text then self.storage:write(self.secrets_file, string.rep(" ", #text)) end
     self.storage.fs.remove(self.secrets_file)
 end
 

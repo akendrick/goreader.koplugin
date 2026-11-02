@@ -7,7 +7,7 @@
 
 local Booklist = {}
 
-Booklist.DEFAULT_DIR = "/mnt/onboard/GOReader/books"
+Booklist.DEFAULT_DIR = "/mnt/onboard/.goreader/books"
 
 -- "sg0189_sg_shup_sample (GOReader).epub" -> "sg0189 sg shup sample"
 function Booklist.title(file_name)
